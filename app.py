@@ -178,45 +178,49 @@ try:
             min_value=min_d, max_value=max_d,
             label_visibility="collapsed", key="ed")
 
+    # ── 1. IMPROVED PILL GROUP (Ensures State Updates) ──────────────────
     def pill_group(sk, items, label, ncols, ctx):
-        """Render clickable pill buttons — active ones show ✓ and darker color."""
         with ctx:
             st.markdown(f'<div class="filter-label">{label}</div>', unsafe_allow_html=True)
-            # Select All / Clear All
-            all_on = (st.session_state[sk] == set(items))
-            sa_lbl = "✓ All" if all_on else "Select All"
-            if st.button(sa_lbl, key=f"{sk}__all"):
-                st.session_state[sk] = set(items) if not all_on else set()
+            all_sel = st.session_state[sk] == set(items)
+            
+            if st.button("✓ Select All" if all_sel else "Select All", key=f"{sk}_all"):
+                st.session_state[sk] = set(items) if not all_sel else set()
                 st.rerun()
-            # Individual pills
+            
+            # Create rows for buttons
             for row in [items[i:i+ncols] for i in range(0, len(items), ncols)]:
-                cols = st.columns(len(row))
+                cs = st.columns(len(row))
                 for ci, item in enumerate(row):
                     active = item in st.session_state[sk]
-                    lbl    = f"✓ {item}" if active else item
-                    if cols[ci].button(lbl, key=f"{sk}__{item}"):
-                        if active:
-                            st.session_state[sk].discard(item)
-                        else:
-                            st.session_state[sk].add(item)
-                        st.rerun()   # ← THIS is what makes all visuals update instantly
+                    if cs[ci].button(f"✓ {item}" if active else item, key=f"{sk}_{item}"):
+                        if active: st.session_state[sk].discard(item)
+                        else:      st.session_state[sk].add(item)
+                        st.rerun()
 
-    pill_group('su', master_users,  "👤 Master User",  3, fc1)
-    pill_group('sl', master_leads,  "🏷️ Master Lead",  2, fc2)
-    pill_group('ss', master_states, "📍 Master State", 3, fc3)
+    # ── 2. THE FILTERING ENGINE (Mirrors Power BI Relationships) ────────
+    def apply_filters(df_to_filter):
+        d = df_to_filter.copy()
+        # Filter by Date
+        if 'Date' in d.columns:
+            d = d[(d['Date'].dt.date >= st.session_state['fstart']) &
+                  (d['Date'].dt.date <= st.session_state['fend'])]
+        # Filter by Master User
+        if 'User' in d.columns and st.session_state['su']:
+            d = d[d['User'].astype(str).isin(st.session_state['su'])]
+        # Filter by Master Lead
+        if 'Lead Type' in d.columns and st.session_state['sl']:
+            d = d[d['Lead Type'].astype(str).isin(st.session_state['sl'])]
+        # Filter by Master State
+        if 'State' in d.columns and st.session_state['ss']:
+            d = d[d['State'].astype(str).isin(st.session_state['ss'])]
+        return d
 
-    with fc4:
-        st.markdown('<div class="filter-label">&nbsp;</div>', unsafe_allow_html=True)
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        if st.button("🔄 Reset", key="reset__all"):
-            del st.session_state['su']
-            del st.session_state['sl']
-            del st.session_state['ss']
-            del st.session_state['fstart']
-            del st.session_state['fend']
-            st.rerun()
-
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ── 3. APPLY TO ALL TABLES (This is why it was failing before) ─────
+    vF   = apply_filters(vdf)    # Filtered Visitors
+    lF   = apply_filters(ldf)    # Filtered Leads
+    sF   = apply_filters(sdf)    # Filtered Sales
+    actF = apply_filters(combined) # Filtered Combined Log
 
     # ══════════════════════════════════════════════════════════════════════════
     # FILTER FUNCTION — applied to every sheet independently (like Power BI)
