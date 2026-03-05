@@ -11,7 +11,6 @@ st.markdown("""
 * { font-family: 'Barlow', sans-serif; }
 .stApp { background-color: #f0ead0; }
 [data-testid="stSidebar"] { display: none; }
-
 .nic-header {
   background: linear-gradient(135deg, #c8a84b, #e8d080, #c8a84b);
   border-radius: 12px; padding: 16px 28px; margin-bottom: 16px;
@@ -23,9 +22,8 @@ st.markdown("""
   display: flex; align-items: center; justify-content: center;
   font-weight: 900; font-size: 1.15rem; color: #c8a84b; flex-shrink: 0;
 }
-.nic-title { font-family: 'Barlow Condensed',sans-serif; font-size: 1.9rem; font-weight: 700; color: #1a1a1a; }
-.nic-sub   { font-style: italic; font-size: 0.82rem; color: #5a4a1a; }
-
+.nic-title { font-family:'Barlow Condensed',sans-serif; font-size:1.9rem; font-weight:700; color:#1a1a1a; }
+.nic-sub   { font-style:italic; font-size:0.82rem; color:#5a4a1a; }
 .kpi-card {
   background: linear-gradient(135deg, #d4c070, #e8d890);
   border: 2px solid #b8a040; border-radius: 10px;
@@ -33,23 +31,20 @@ st.markdown("""
   box-shadow: 3px 3px 8px rgba(0,0,0,0.18); min-height: 100px;
 }
 .kpi-label {
-  font-family: 'Barlow Condensed',sans-serif; font-size: 0.72rem;
-  font-weight: 700; color: #3a2a00; text-transform: uppercase;
-  letter-spacing: 0.06em; margin-bottom: 5px;
+  font-family:'Barlow Condensed',sans-serif; font-size:0.72rem;
+  font-weight:700; color:#3a2a00; text-transform:uppercase;
+  letter-spacing:0.06em; margin-bottom:5px;
 }
-.kpi-value { font-family: 'Barlow Condensed',sans-serif; font-size: 2rem; font-weight: 700; color: #1a1200; }
-
+.kpi-value { font-family:'Barlow Condensed',sans-serif; font-size:2rem; font-weight:700; color:#1a1200; }
 .filter-section {
   background: linear-gradient(135deg, #2a2a2a, #1a1a1a);
   border-radius: 12px; padding: 14px 18px; margin-bottom: 14px;
 }
 .filter-label {
-  font-family: 'Barlow Condensed',sans-serif; font-size: 0.85rem;
-  font-weight: 700; color: #e8d080; text-transform: uppercase;
-  letter-spacing: 0.08em; margin-bottom: 8px;
+  font-family:'Barlow Condensed',sans-serif; font-size:0.85rem;
+  font-weight:700; color:#e8d080; text-transform:uppercase;
+  letter-spacing:0.08em; margin-bottom:8px;
 }
-
-/* All filter buttons — pill style */
 div[data-testid="stButton"] > button {
   border-radius: 20px !important; padding: 3px 12px !important;
   font-size: 0.76rem !important; font-weight: 600 !important;
@@ -58,11 +53,9 @@ div[data-testid="stButton"] > button {
   min-height: 0 !important; height: auto !important; line-height: 1.5 !important;
   white-space: nowrap !important;
 }
-div[data-testid="stButton"] > button:hover,
-div[data-testid="stButton"] > button[kind="primary"] {
+div[data-testid="stButton"] > button:hover {
   background: #8B6914 !important; color: #fff !important; border-color: #5a3d10 !important;
 }
-
 .chart-box {
   background: linear-gradient(135deg, #ddd090, #ede8b0);
   border: 1.5px solid #b8a040; border-radius: 10px;
@@ -70,30 +63,36 @@ div[data-testid="stButton"] > button[kind="primary"] {
   box-shadow: 2px 2px 6px rgba(0,0,0,0.12);
 }
 .chart-title {
-  font-family: 'Barlow Condensed',sans-serif; font-size: 0.95rem;
-  font-weight: 700; color: #2a1a00; text-transform: uppercase; margin-bottom: 2px;
+  font-family:'Barlow Condensed',sans-serif; font-size:0.95rem;
+  font-weight:700; color:#2a1a00; text-transform:uppercase; margin-bottom:2px;
 }
 .sec-hdr {
-  background: linear-gradient(90deg, #7a6020, #c8a84b); color: #fff;
-  font-family: 'Barlow Condensed',sans-serif; font-weight: 700; font-size: 1rem;
-  padding: 8px 16px; border-radius: 6px 6px 0 0; text-transform: uppercase;
+  background: linear-gradient(90deg, #7a6020, #c8a84b); color:#fff;
+  font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:1rem;
+  padding: 8px 16px; border-radius: 6px 6px 0 0; text-transform:uppercase;
 }
-hr { border-color: #b8a040; opacity: 0.35; }
+hr { border-color:#b8a040; opacity:0.35; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── IMPORTANT: Replace this URL with your NEW sheet's published CSV URL ───────
-# Steps: File → Share → Publish to web → Sheet1 → CSV → Copy link
-# The old URL below is from the OLD sheet — update it!
-SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mbaWwJ8lTdMMgsYo2zuXM9rEmoIQ_AlEqd6GudLDaIoAViA5OE1ppjqmujNOAj/pub?output=csv"
-# ↑↑↑ REPLACE with new sheet URL from sheet ID: 1rn2WomKdekug5A5uoazpxv7AQbSneR2L2J7_3DDZxC8
+# ═══════════════════════════════════════════════════════════════════
+# SHEET URLS — tries each one until data loads successfully
+# To add your new sheet: publish it as CSV and paste the URL here
+# ═══════════════════════════════════════════════════════════════════
+SHEET_URLS = [
+    # NEW sheet — needs to be published. Steps:
+    # 1. Open https://docs.google.com/spreadsheets/d/1rn2WomKdekug5A5uoazpxv7AQbSneR2L2J7_3DDZxC8
+    # 2. File → Share → Publish to web → Combined_Activity_Log → CSV → Publish → Copy URL → paste below
+    "https://docs.google.com/spreadsheets/d/e/PASTE_YOUR_NEW_PUBLISHED_CSV_URL_HERE/pub?output=csv",
 
-@st.cache_data(ttl=60)
-def load_data():
-    df = pd.read_csv(SHEET_URL)
+    # OLD sheet (fallback — currently working)
+    "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mbaWwJ8lTdMMgsYo2zuXM9rEmoIQ_AlEqd6GudLDaIoAViA5OE1ppjqmujNOAj/pub?output=csv",
+]
+
+def clean_df(df):
+    df = df.copy()
     df.columns = df.columns.str.strip()
-
-    # De-duplicate column names
+    # De-duplicate
     seen = {}
     new_cols = []
     for col in df.columns:
@@ -104,40 +103,51 @@ def load_data():
             seen[col] = 0
             new_cols.append(col)
     df.columns = new_cols
-
-    # Standardise column names to known targets
+    # Rename to standard names
     col_map = {}
     for col in df.columns:
         lc = col.strip().lower()
-        if lc == 'date'                            and 'Date'           not in col_map.values(): col_map[col] = 'Date'
-        elif lc in ('lead type','leadtype')        and 'Lead Type'      not in col_map.values(): col_map[col] = 'Lead Type'
-        elif lc == 'user'                          and 'User'           not in col_map.values(): col_map[col] = 'User'
-        elif 'customer' in lc                      and 'Customer Name'  not in col_map.values(): col_map[col] = 'Customer Name'
-        elif 'contact' in lc                       and 'Contact Person' not in col_map.values(): col_map[col] = 'Contact Person'
-        elif lc == 'state'                         and 'State'          not in col_map.values(): col_map[col] = 'State'
-        elif lc in ('city','cIty','cITy','city')   and 'City'           not in col_map.values(): col_map[col] = 'City'
-        elif 'remark' in lc                        and 'Remarks'        not in col_map.values(): col_map[col] = 'Remarks'
-        elif 'meyer' in lc or 'existing' in lc     and 'Meyer Existing' not in col_map.values(): col_map[col] = 'Meyer Existing'
-        elif lc == 'status'                        and 'Status'         not in col_map.values(): col_map[col] = 'Status'
-        elif lc == 'source'                        and 'Source'         not in col_map.values(): col_map[col] = 'Source'
-        elif 'amount' in lc or lc == 'po amount'   and 'Amount'         not in col_map.values(): col_map[col] = 'Amount'
-
+        if lc == 'date'                         and 'Date'           not in col_map.values(): col_map[col]='Date'
+        elif lc in ('lead type','leadtype')      and 'Lead Type'      not in col_map.values(): col_map[col]='Lead Type'
+        elif lc == 'user'                        and 'User'           not in col_map.values(): col_map[col]='User'
+        elif 'customer' in lc                    and 'Customer Name'  not in col_map.values(): col_map[col]='Customer Name'
+        elif 'contact' in lc                     and 'Contact Person' not in col_map.values(): col_map[col]='Contact Person'
+        elif lc == 'state'                       and 'State'          not in col_map.values(): col_map[col]='State'
+        elif lc in ('city','cIty')               and 'City'           not in col_map.values(): col_map[col]='City'
+        elif 'remark' in lc                      and 'Remarks'        not in col_map.values(): col_map[col]='Remarks'
+        elif 'meyer' in lc or 'existing' in lc   and 'Meyer Existing' not in col_map.values(): col_map[col]='Meyer Existing'
+        elif lc == 'status'                      and 'Status'         not in col_map.values(): col_map[col]='Status'
+        elif lc == 'source'                      and 'Source'         not in col_map.values(): col_map[col]='Source'
+        elif 'amount' in lc or 'po amount' in lc and 'Amount'         not in col_map.values(): col_map[col]='Amount'
     df.rename(columns=col_map, inplace=True)
-
-    # Parse date
     if 'Date' in df.columns:
         df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-
+    # Drop rows that are completely empty
+    df.dropna(how='all', inplace=True)
     return df
 
-try:
-    df = load_data()
+@st.cache_data(ttl=60)
+def load_data():
+    errors = []
+    for url in SHEET_URLS:
+        if "PASTE_YOUR" in url:
+            continue  # skip placeholder
+        try:
+            df = pd.read_csv(url)
+            if len(df) > 0:
+                df = clean_df(df)
+                return df, url
+        except Exception as e:
+            errors.append(str(e))
+    raise Exception("Could not load any sheet. Errors: " + " | ".join(errors))
 
-    # ── Keyword detection from Remarks (your actual column) ──────────────────
-    # Based on real data seen: "finalised", "order finalised", "quotation", "enquiry"
-    SALE_KW = r'finali|po received|advance|payment done|order confirm|install|sale confirm|purchased'
-    QUOT_KW = r'quotation|quote|quot send|want quotation|want quatation'
-    LEAD_KW = r'enquir|interest|need|require|discussion|plan|want|looking|meeting|visit'
+try:
+    df, active_url = load_data()
+
+    # KPI keywords — matches actual Remarks in your data
+    SALE_KW = r'finali|po received|advance|payment done|order confirm|install|sale confirm|purchased|order finali'
+    QUOT_KW = r'quotation|quotation send|quote|want quot|quatation'
+    LEAD_KW = r'enquir|interest|need|require|discussion|plan|want|looking|meeting|visit|discussion'
 
     # ── Session state ─────────────────────────────────────────────────────────
     def uniq(col):
@@ -147,7 +157,7 @@ try:
     all_leads  = uniq('Lead Type')
     all_states = uniq('State')
 
-    for k, v in [('sel_users', set(all_users)), ('sel_leads', set(all_leads)), ('sel_states', set(all_states))]:
+    for k, v in [('sel_users',set(all_users)),('sel_leads',set(all_leads)),('sel_states',set(all_states))]:
         if k not in st.session_state: st.session_state[k] = v
 
     if 'Date' in df.columns:
@@ -169,12 +179,10 @@ try:
       </div>
     </div>""", unsafe_allow_html=True)
 
-    # ── FILTER PANEL ─────────────────────────────────────────────────────────
+    # ── FILTER PANEL ──────────────────────────────────────────────────────────
     st.markdown('<div class="filter-section">', unsafe_allow_html=True)
-
     fc0, fc1, fc2, fc3, fc4 = st.columns([1.4, 2.5, 2.8, 3.2, 0.7])
 
-    # Date
     with fc0:
         st.markdown('<div class="filter-label">📅 Date Range</div>', unsafe_allow_html=True)
         st.session_state['fstart'] = st.date_input("From", value=st.session_state['fstart'],
@@ -182,68 +190,33 @@ try:
         st.session_state['fend']   = st.date_input("To",   value=st.session_state['fend'],
             min_value=min_d, max_value=max_d, label_visibility="collapsed", key="ed")
 
-    # Master User
-    with fc1:
-        st.markdown('<div class="filter-label">👤 Master User</div>', unsafe_allow_html=True)
-        # Select All toggle
-        all_u_selected = len(st.session_state['sel_users']) == len(all_users)
-        if st.button("✓ Select All" if all_u_selected else "Select All", key="u_all"):
-            st.session_state['sel_users'] = set(all_users) if not all_u_selected else set()
-            st.rerun()
-        # Individual user buttons — 3 per row
-        rows_u = [all_users[i:i+3] for i in range(0, len(all_users), 3)]
-        for row in rows_u:
-            cols = st.columns(len(row))
-            for ci, u in enumerate(row):
-                active = u in st.session_state['sel_users']
-                if cols[ci].button(f"✓ {u}" if active else u, key=f"u_{u}"):
-                    if active: st.session_state['sel_users'].discard(u)
-                    else:      st.session_state['sel_users'].add(u)
-                    st.rerun()
+    def pill_group(col_key, all_items, label, n_cols, fc):
+        with fc:
+            st.markdown(f'<div class="filter-label">{label}</div>', unsafe_allow_html=True)
+            all_selected = set(all_items) == st.session_state[col_key]
+            sa_label = "✓ Select All" if all_selected else "Select All"
+            if st.button(sa_label, key=f"{col_key}_all"):
+                st.session_state[col_key] = set(all_items) if not all_selected else set()
+                st.rerun()
+            for row in [all_items[i:i+n_cols] for i in range(0, len(all_items), n_cols)]:
+                cols = st.columns(len(row))
+                for ci, item in enumerate(row):
+                    active = item in st.session_state[col_key]
+                    if cols[ci].button(f"✓ {item}" if active else item, key=f"{col_key}_{item}"):
+                        if active: st.session_state[col_key].discard(item)
+                        else:      st.session_state[col_key].add(item)
+                        st.rerun()
 
-    # Master Lead
-    with fc2:
-        st.markdown('<div class="filter-label">🏷️ Master Lead</div>', unsafe_allow_html=True)
-        all_l_selected = len(st.session_state['sel_leads']) == len(all_leads)
-        if st.button("✓ Select All" if all_l_selected else "Select All", key="l_all"):
-            st.session_state['sel_leads'] = set(all_leads) if not all_l_selected else set()
-            st.rerun()
-        rows_l = [all_leads[i:i+2] for i in range(0, len(all_leads), 2)]
-        for row in rows_l:
-            cols = st.columns(len(row))
-            for ci, l in enumerate(row):
-                active = l in st.session_state['sel_leads']
-                if cols[ci].button(f"✓ {l}" if active else l, key=f"l_{l}"):
-                    if active: st.session_state['sel_leads'].discard(l)
-                    else:      st.session_state['sel_leads'].add(l)
-                    st.rerun()
+    pill_group('sel_users',  all_users,  "👤 Master User",  3, fc1)
+    pill_group('sel_leads',  all_leads,  "🏷️ Master Lead",  2, fc2)
+    pill_group('sel_states', all_states, "📍 Master State", 3, fc3)
 
-    # Master State
-    with fc3:
-        st.markdown('<div class="filter-label">📍 Master State</div>', unsafe_allow_html=True)
-        all_s_selected = len(st.session_state['sel_states']) == len(all_states)
-        if st.button("✓ Select All" if all_s_selected else "Select All", key="s_all"):
-            st.session_state['sel_states'] = set(all_states) if not all_s_selected else set()
-            st.rerun()
-        rows_s = [all_states[i:i+3] for i in range(0, len(all_states), 3)]
-        for row in rows_s:
-            cols = st.columns(len(row))
-            for ci, s in enumerate(row):
-                active = s in st.session_state['sel_states']
-                if cols[ci].button(f"✓ {s}" if active else s, key=f"s_{s}"):
-                    if active: st.session_state['sel_states'].discard(s)
-                    else:      st.session_state['sel_states'].add(s)
-                    st.rerun()
-
-    # Reset
     with fc4:
         st.markdown('<div class="filter-label">&nbsp;</div>', unsafe_allow_html=True)
         st.markdown("<br><br>", unsafe_allow_html=True)
         if st.button("🔄\nReset", key="reset"):
-            for k in ['sel_users','sel_leads','sel_states']:
-                del st.session_state[k]
-            st.session_state['fstart'] = min_d
-            st.session_state['fend']   = max_d
+            for k in ['sel_users','sel_leads','sel_states','fstart','fend']:
+                if k in st.session_state: del st.session_state[k]
             st.rerun()
 
     st.markdown('</div>', unsafe_allow_html=True)
@@ -262,8 +235,7 @@ try:
 
     # ── KPIs ─────────────────────────────────────────────────────────────────
     has_status = 'Status'  in dff.columns
-    has_remark = 'Remarks' in dff.columns   # ← correct column name
-
+    has_remark = 'Remarks' in dff.columns
     total_visitors = len(dff)
 
     if has_status:
@@ -310,8 +282,7 @@ try:
         if 'Lead Type' in dff.columns:
             d = dff['Lead Type'].value_counts().reset_index(); d.columns=['x','y']
             fig = px.bar(d, x='y', y='x', orientation='h', color_discrete_sequence=GOLD)
-            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="",
-                                             yaxis={'categoryorder':'total ascending'})
+            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="", yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -329,30 +300,27 @@ try:
         if 'User' in dff.columns:
             d = dff['User'].value_counts().reset_index(); d.columns=['x','y']
             fig = px.bar(d, x='y', y='x', orientation='h', color_discrete_sequence=["#8B6914"])
-            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="",
-                                             yaxis={'categoryorder':'total ascending'})
+            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="", yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with ch4:
         st.markdown('<div class="chart-box"><div class="chart-title">Lead Type (Sales)</div>', unsafe_allow_html=True)
-        if 'Lead Type' in dff.columns and has_remark:
-            sub = dff[dff['Remarks'].str.contains(SALE_KW, na=False, case=False)]
+        if 'Lead Type' in dff.columns:
+            sub = dff[dff['Remarks'].str.contains(SALE_KW, na=False, case=False)] if has_remark else dff
             d = sub['Lead Type'].value_counts().reset_index(); d.columns=['x','y']
             fig = px.bar(d, x='y', y='x', orientation='h', color_discrete_sequence=["#c8a84b"])
-            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="",
-                                             yaxis={'categoryorder':'total ascending'})
+            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="", yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
     with ch5:
         st.markdown('<div class="chart-box"><div class="chart-title">State (Sales)</div>', unsafe_allow_html=True)
-        if 'State' in dff.columns and has_remark:
-            sub = dff[dff['Remarks'].str.contains(SALE_KW, na=False, case=False)]
+        if 'State' in dff.columns:
+            sub = dff[dff['Remarks'].str.contains(SALE_KW, na=False, case=False)] if has_remark else dff
             d = sub['State'].value_counts().reset_index(); d.columns=['x','y']
             fig = px.bar(d, x='y', y='x', orientation='h', color_discrete_sequence=["#e8c870"])
-            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="",
-                                             yaxis={'categoryorder':'total ascending'})
+            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="", yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig, use_container_width=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -365,28 +333,34 @@ try:
 
     with t1:
         st.markdown('<div class="sec-hdr">📋 Lead &amp; Visitor Log</div>', unsafe_allow_html=True)
-        lv_cols = sc(['Date','Customer Name','Contact Person','User','State','City','Lead Type','Remarks'])
-        lv = (dff[lv_cols] if lv_cols else dff).reset_index(drop=True)
+        lv = dff[sc(['Date','Customer Name','Contact Person','User','State','City','Lead Type','Remarks'])].reset_index(drop=True)
         if 'Date' in lv.columns: lv = lv.sort_values('Date', ascending=False).reset_index(drop=True)
         st.dataframe(lv, use_container_width=True, height=360)
 
     with t2:
         st.markdown('<div class="sec-hdr">💰 Sales / PO Records</div>', unsafe_allow_html=True)
-        if has_remark:
-            sdf = dff[dff['Remarks'].str.contains(SALE_KW, na=False, case=False)].copy()
-        else:
-            sdf = dff.copy()
-        s_cols = sc(['Date','Customer Name','User','State','Lead Type','Amount','Remarks'])
-        s_tbl = (sdf[s_cols] if s_cols else sdf).reset_index(drop=True)
+        sdf = dff[dff['Remarks'].str.contains(SALE_KW, na=False, case=False)].copy() if has_remark else dff.copy()
+        s_tbl = sdf[sc(['Date','Customer Name','User','State','Lead Type','Amount','Remarks'])].reset_index(drop=True)
         if 'Date' in s_tbl.columns: s_tbl = s_tbl.sort_values('Date', ascending=False).reset_index(drop=True)
         st.dataframe(s_tbl, use_container_width=True, height=360)
 
-    # ── Sheet URL warning + debug ─────────────────────────────────────────────
-    st.info("⚠️ **Action needed:** Go to your new Google Sheet → File → Share → Publish to web → Sheet: Combined_Activity_Log → Format: CSV → Copy the link → Replace `SHEET_URL` in this file with the new link.")
+    # ── How to connect new sheet ──────────────────────────────────────────────
+    with st.expander("📌 How to connect your new Google Sheet"):
+        st.markdown(f"""
+**Currently using:** `...{active_url[-60:]}`
 
-    with st.expander("🔧 Debug — columns & sample data"):
-        st.write("**Columns detected:**", df.columns.tolist())
-        st.write(f"**Total rows:** {len(df)}")
+**To switch to your new sheet (`1rn2WomKdekug5A5uoazpxv7AQbSneR2L2J7_3DDZxC8`):**
+
+1. Open your sheet → **File** → **Share** → **Publish to web**
+2. Dropdown 1: pick **Combined_Activity_Log**
+3. Dropdown 2: pick **Comma-separated values (.csv)**
+4. Click **Publish** → copy the link (starts with `https://docs.google.com/spreadsheets/d/e/...`)
+5. In this file, find `SHEET_URLS` at the top and replace the first URL with your copied link
+        """)
+
+    with st.expander("🔧 Debug — columns & sample"):
+        st.write("**Columns:**", df.columns.tolist())
+        st.write(f"**Rows:** {len(df)}")
         st.dataframe(df.head(5))
 
     st.markdown("""<div style="text-align:center;color:#8a7030;font-size:0.72rem;margin-top:16px;font-style:italic;">
@@ -396,5 +370,3 @@ except Exception as e:
     st.error(f"❌ Error: {e}")
     import traceback
     st.code(traceback.format_exc())
-    try: st.write("Columns:", df.columns.tolist())
-    except: pass
