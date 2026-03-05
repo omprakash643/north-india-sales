@@ -7,7 +7,7 @@ import {
   ResponsiveContainer, FunnelChart, Funnel, LabelList
 } from "recharts";
 
-/* ─── DESIGN TOKENS ─────────────────────────────────────────────────────────── */
+#/* ─── DESIGN TOKENS ─────────────────────────────────────────────────────────── */
 const T = {
   bg:      "#080b10",
   surface: "#0d1117",
