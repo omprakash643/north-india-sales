@@ -93,71 +93,60 @@ def clean_amount(val):
         return float(str(val).replace(',','').replace('₹','').replace(' ','').strip())
     except:
         return 0.0
-
 @st.cache_data(ttl=60)
 def load_all():
+    # Load all sheets
     vdf = pd.read_csv(VISITOR_URL)
-    vdf.columns = vdf.columns.str.strip()
-    for c in list(vdf.columns):
-        if 'remark' in c.lower():
-            vdf.rename(columns={c:'Remark'}, inplace=True); break
-    for c in list(vdf.columns):
-        if any(k in c.lower() for k in ['competitor','meyer','existing']):
-            vdf.rename(columns={c:'Competitors'}, inplace=True); break
-    vdf['_src'] = 'Visitor'
-
     ldf = pd.read_csv(LEAD_URL)
-    ldf.columns = ldf.columns.str.strip()
-    for c in list(ldf.columns):
-        if 'remark' in c.lower():
-            ldf.rename(columns={c:'Remark'}, inplace=True); break
-    ldf['_src'] = 'Lead'
-
     sdf = pd.read_csv(SALES_URL)
-    sdf.columns = sdf.columns.str.strip()
-    sdf.rename(columns={'Customer':'Customer Name','PO Amount':'Amount'}, inplace=True)
+
+    # ⭐ THE CONNECTION FIX: Normalise every sheet immediately
+    for df in [vdf, ldf, sdf]:
+        df.columns = df.columns.str.strip()
+        # Clean text columns so they match your MASTER_USERS list
+        for col in ['User', 'Lead Type', 'State', 'Source', 'Stage']:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.strip().str.upper()
+    
+    # Standardize Sales columns
+    sdf.rename(columns={'Customer': 'Customer Name', 'PO Amount': 'Amount'}, inplace=True)
     if 'Amount' in sdf.columns:
         sdf['Amount'] = sdf['Amount'].apply(clean_amount)
-    sdf['_src'] = 'Sales'
 
+    # Parse Dates
     for df in [vdf, ldf, sdf]:
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
-        # ⭐ KEY FIX: Normalise User to UPPERCASE stripped — matches Master User table
-        if 'User' in df.columns:
-            df['User'] = df['User'].astype(str).str.strip().str.upper()
-        if 'Lead Type' in df.columns:
-            df['Lead Type'] = df['Lead Type'].astype(str).str.strip().str.upper()
-        if 'State' in df.columns:
-            df['State'] = df['State'].astype(str).str.strip().str.upper()
 
     combined = pd.concat([vdf, ldf], ignore_index=True)
-
-    # Build Master Lead + State from actual data (uppercase normalised)
-    def master(col, *dfs):
-        vals = set()
-        for d in dfs:
-            if col in d.columns:
-                vals |= set(d[col].dropna().unique())
-        return sorted(v for v in vals if v and v != 'NAN')
-
-    master_leads  = master('Lead Type', vdf, ldf, sdf)
-    master_states = master('State',     vdf, ldf, sdf)
+    
+    # Build Master lists from the CLEANED data
+    master_leads = sorted(combined['Lead Type'].dropna().unique())
+    master_states = sorted(combined['State'].dropna().unique())
 
     return vdf, ldf, sdf, combined, master_leads, master_states
 
-try:
-    vdf, ldf, sdf, combined, master_leads, master_states = load_all()
-
-    # ── Session state ─────────────────────────────────────────────────────────
-    if 'su' not in st.session_state: st.session_state['su'] = set(MASTER_USERS)
-    if 'sl' not in st.session_state: st.session_state['sl'] = set(master_leads)
-    if 'ss' not in st.session_state: st.session_state['ss'] = set(master_states)
-
-    min_d = combined['Date'].dropna().min().date()
-    max_d = combined['Date'].dropna().max().date()
-    if 'fstart' not in st.session_state: st.session_state['fstart'] = min_d
-    if 'fend'   not in st.session_state: st.session_state['fend']   = max_d
+# ── Updated Filter Engine ──
+def filt(df_to_filter):
+    d = df_to_filter.copy()
+    
+    # 1. User Filter
+    if 'User' in d.columns:
+        # If nothing is selected, show nothing (Power BI behavior)
+        if not st.session_state['su']: return d.iloc[0:0]
+        d = d[d['User'].isin(st.session_state['su'])]
+        
+    # 2. Lead Type Filter
+    if 'Lead Type' in d.columns:
+        if not st.session_state['sl']: return d.iloc[0:0]
+        d = d[d['Lead Type'].isin(st.session_state['sl'])]
+        
+    # 3. State Filter
+    if 'State' in d.columns:
+        if not st.session_state['ss']: return d.iloc[0:0]
+        d = d[d['State'].isin(st.session_state['ss'])]
+        
+    return d
 
     # ── Header ────────────────────────────────────────────────────────────────
     st.markdown("""
