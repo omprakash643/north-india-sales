@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import date
-import re
 
 st.set_page_config(page_title="NIC Sales Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
@@ -79,7 +78,6 @@ LEAD_URL    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-
 SALES_URL   = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mbaWwJ8lTdMMgsYo2zuXM9rEmoIQ_AlEqd6GudLDaIoAViA5OE1ppjqmujNOAj/pub?gid=23552387&single=true&output=csv"
 
 def clean_amount(val):
-    """Convert any amount value to float safely — handles commas, ₹, strings."""
     try:
         if pd.isna(val): return 0.0
         return float(str(val).replace(',','').replace('₹','').replace(' ','').strip())
@@ -88,66 +86,82 @@ def clean_amount(val):
 
 @st.cache_data(ttl=60)
 def load_all():
-    # ── Visitor: Date, Lead Type, User, Customer Name, Contact Person,
-    #             State, City, Meyer Existing Customer, Remarks
+    # ── Visitor sheet ─────────────────────────────────────────────────────────
+    # Date, Lead Type, User, Customer Name, Contact Person,
+    # State, City, Competitors (was "Meyer Existing Customer"), Remark
     vdf = pd.read_csv(VISITOR_URL)
     vdf.columns = vdf.columns.str.strip()
-    vdf['_sheet'] = 'Visitor'
+    # Rename Remark variants
+    for c in vdf.columns:
+        if 'remark' in c.lower() or 'remark' in c.lower():
+            vdf.rename(columns={c: 'Remark'}, inplace=True); break
+    # Rename competitor column — could be "Competitors" or "Meyer Existing Customer"
+    for c in vdf.columns:
+        if 'competitor' in c.lower() or 'meyer' in c.lower() or 'existing' in c.lower():
+            vdf.rename(columns={c: 'Competitors'}, inplace=True); break
+    vdf['_src'] = 'Visitor'
 
-    # ── Lead: Date, UQN No., Source, User, Customer Name, Contact Person,
-    #          Mobile, Remarks, Address Detail, State, Lead Type,
-    #          Stage, Last Follow Date, G S T No
+    # ── Lead sheet ────────────────────────────────────────────────────────────
+    # Date, UQN No., Source, User, Customer Name, Contact Person,
+    # Mobile, Remark, Address Detail, State, Lead Type,
+    # Stage, Last Follow Date, G S T No
     ldf = pd.read_csv(LEAD_URL)
     ldf.columns = ldf.columns.str.strip()
-    ldf['_sheet'] = 'Lead'
+    for c in ldf.columns:
+        if 'remark' in c.lower():
+            ldf.rename(columns={c: 'Remark'}, inplace=True); break
+    ldf['_src'] = 'Lead'
 
-    # ── Sales: Date, Customer, User, Lead Type, Products, PO Amount, GST, State
+    # ── Sales sheet ───────────────────────────────────────────────────────────
+    # Date, Customer, User, Lead Type, Products, PO Amount, GST, State
     sdf = pd.read_csv(SALES_URL)
     sdf.columns = sdf.columns.str.strip()
-    # Rename columns
     sdf.rename(columns={'Customer': 'Customer Name', 'PO Amount': 'Amount'}, inplace=True)
-    # Clean Amount column — fix "Unknown format code 'f' for object of type 'str'"
     if 'Amount' in sdf.columns:
         sdf['Amount'] = sdf['Amount'].apply(clean_amount)
-    sdf['_sheet'] = 'Sales'
+    sdf['_src'] = 'Sales'
 
-    # ── Parse dates for all sheets ────────────────────────────────────────────
+    # ── Parse dates ───────────────────────────────────────────────────────────
     for df in [vdf, ldf, sdf]:
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 
-    # ── Normalise Remark column name in visitor sheet ─────────────────────────
-    # Visitor has "Remarks", Lead has "Remarks" too — keep as-is
-    # Visitor has "Meyer Existing Customer" — rename for clarity
-    if 'Meyer Existing Customer' in vdf.columns:
-        vdf.rename(columns={'Meyer Existing Customer': 'Competitor'}, inplace=True)
+    # ── Combined_Activity_Log = Visitor + Lead (matches Power BI model) ───────
+    # Power BI: Total Visitors = COUNTROWS(Visitor_Related_data)
+    #           Total Lead     = COUNTROWS(Lead_Realated_Data)  [note: includes ALL lead rows]
+    #           Total Sales    = COUNTROWS(Sales_Related_Data)
+    #           Total Quotation= COUNTROWS filtered Stage="Quotation Send"
+    combined = pd.concat([vdf, ldf], ignore_index=True)
 
-    # ── Combine Visitor + Lead into one activity log ──────────────────────────
-    activity = pd.concat([vdf, ldf], ignore_index=True)
+    # ── Master tables (unique values across all sheets for filters) ───────────
+    master_users  = sorted(set(
+        vdf['User'].dropna().astype(str).unique().tolist() +
+        ldf['User'].dropna().astype(str).unique().tolist() +
+        sdf['User'].dropna().astype(str).unique().tolist()
+    ))
+    master_leads  = sorted(set(
+        vdf['Lead Type'].dropna().astype(str).unique().tolist() if 'Lead Type' in vdf.columns else [] +
+        ldf['Lead Type'].dropna().astype(str).unique().tolist() if 'Lead Type' in ldf.columns else [] +
+        sdf['Lead Type'].dropna().astype(str).unique().tolist() if 'Lead Type' in sdf.columns else []
+    ))
+    master_states = sorted(set(
+        vdf['State'].dropna().astype(str).unique().tolist() if 'State' in vdf.columns else [] +
+        ldf['State'].dropna().astype(str).unique().tolist() if 'State' in ldf.columns else [] +
+        sdf['State'].dropna().astype(str).unique().tolist() if 'State' in sdf.columns else []
+    ))
 
-    return activity, sdf
+    return vdf, ldf, sdf, combined, master_users, master_leads, master_states
 
 try:
-    activity_df, sales_df = load_all()
+    vdf, ldf, sdf, combined, master_users, master_leads, master_states = load_all()
 
-    # ── Filter options ────────────────────────────────────────────────────────
-    def uniq(col):
-        vals = []
-        if col in activity_df.columns:
-            vals += activity_df[col].dropna().astype(str).unique().tolist()
-        if col in sales_df.columns:
-            vals += sales_df[col].dropna().astype(str).unique().tolist()
-        return sorted(set(vals))
-
-    all_users  = uniq('User')
-    all_leads  = uniq('Lead Type')
-    all_states = uniq('State')
-
-    for k, v in [('su',set(all_users)),('sl',set(all_leads)),('ss',set(all_states))]:
+    # ── Session state for filters ─────────────────────────────────────────────
+    for k, v in [('su', set(master_users)), ('sl', set(master_leads)), ('ss', set(master_states))]:
         if k not in st.session_state: st.session_state[k] = v
 
-    min_d = activity_df['Date'].dropna().min().date()
-    max_d = activity_df['Date'].dropna().max().date()
+    # Date range from combined
+    min_d = combined['Date'].dropna().min().date()
+    max_d = combined['Date'].dropna().max().date()
     if 'fstart' not in st.session_state: st.session_state['fstart'] = min_d
     if 'fend'   not in st.session_state: st.session_state['fend']   = max_d
 
@@ -189,9 +203,9 @@ try:
                         else:      st.session_state[sk].add(item)
                         st.rerun()
 
-    pill_group('su', all_users,  "👤 Master User",  3, fc1)
-    pill_group('sl', all_leads,  "🏷️ Master Lead",  2, fc2)
-    pill_group('ss', all_states, "📍 Master State", 3, fc3)
+    pill_group('su', master_users,  "👤 Master User",  3, fc1)
+    pill_group('sl', master_leads,  "🏷️ Master Lead",  2, fc2)
+    pill_group('ss', master_states, "📍 Master State", 3, fc3)
 
     with fc4:
         st.markdown('<div class="filter-label">&nbsp;</div>', unsafe_allow_html=True)
@@ -203,7 +217,8 @@ try:
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Apply Filters ─────────────────────────────────────────────────────────
+    # ── Filter function — mirrors Power BI slicer behaviour ──────────────────
+    # Power BI Master tables connect via relationships: filter propagates to all fact tables
     def filt(df):
         d = df.copy()
         if 'Date' in d.columns:
@@ -217,51 +232,44 @@ try:
             d = d[d['State'].astype(str).isin(st.session_state['ss'])]
         return d
 
-    act  = filt(activity_df)
-    salF = filt(sales_df)
+    vF   = filt(vdf)      # filtered visitors
+    lF   = filt(ldf)      # filtered leads
+    sF   = filt(sdf)      # filtered sales
+    actF = filt(combined) # filtered combined (for charts that use combined)
 
-    # ── KPIs ─────────────────────────────────────────────────────────────────
-    # Power BI uses Combined_Activity_Log for visitors+leads count
-    # Visitor sheet  → Total Visitors
-    # Lead sheet     → Total Leads
-    # Sales sheet    → Total Sales
-    # Lead Stage="Quotation Send" → Total Quotation Send
-    # Sum(PO Amount) from Sales   → Total Revenue
+    # ── KPIs — exact match to Power BI measures ───────────────────────────────
+    total_visitors = len(vF)                          # COUNTROWS(Visitor_Related_data)
+    total_leads    = len(lF)                          # COUNTROWS(Lead_Realated_Data)
+    total_sales    = len(sF)                          # COUNTROWS(Sales_Related_Data)
+    total_rev      = float(sF['Amount'].sum()) if 'Amount' in sF.columns else 0.0
 
-    visitors  = len(act[act['_sheet'] == 'Visitor'])
-    leads_all = act[act['_sheet'] == 'Lead']
-    leads_cnt = len(leads_all)
-    sales_cnt = len(salF)
-    revenue   = float(salF['Amount'].sum()) if 'Amount' in salF.columns else 0.0
-
-    if 'Stage' in leads_all.columns:
-        quot = len(leads_all[leads_all['Stage'].astype(str).str.contains('quot', na=False, case=False)])
+    # Total Quotation = Lead rows where Stage = "Quotation Send"
+    if 'Stage' in lF.columns:
+        total_quot = len(lF[lF['Stage'].astype(str).str.contains('quot', na=False, case=False)])
     else:
-        quot = 0
+        total_quot = 0
 
     def fmt_rev(v):
-        """Format revenue safely — always a float by now."""
         try:
             v = float(v)
-            if v >= 1_00_00_000:   return f"₹{v/1_00_00_000:.2f} Cr"
-            elif v >= 1_00_000:    return f"₹{v/1_00_000:.1f} L"
-            else:                  return f"₹{v:,.0f}"
-        except:
-            return "—"
+            if v >= 1_00_00_000: return f"₹{v/1_00_00_000:.2f} Cr"
+            elif v >= 1_00_000:  return f"₹{v/1_00_000:.1f} L"
+            else:                return f"₹{v:,.0f}"
+        except: return "—"
 
     def kpi(label, val):
         return f'<div class="kpi-card"><div class="kpi-label">{label}</div><div class="kpi-value">{val}</div></div>'
 
     k1,k2,k3,k4,k5 = st.columns(5)
-    k1.markdown(kpi("Total Visitors",       f"{visitors:,}"),  unsafe_allow_html=True)
-    k2.markdown(kpi("Total Lead",           f"{leads_cnt:,}"), unsafe_allow_html=True)
-    k3.markdown(kpi("Total Sales",          f"{sales_cnt:,}"), unsafe_allow_html=True)
-    k4.markdown(kpi("Total Quotation Send", f"{quot:,}"),      unsafe_allow_html=True)
-    k5.markdown(kpi("Total Revenue",        fmt_rev(revenue)), unsafe_allow_html=True)
+    k1.markdown(kpi("Total Visitors",       f"{total_visitors:,}"), unsafe_allow_html=True)
+    k2.markdown(kpi("Total Lead",           f"{total_leads:,}"),    unsafe_allow_html=True)
+    k3.markdown(kpi("Total Sales",          f"{total_sales:,}"),    unsafe_allow_html=True)
+    k4.markdown(kpi("Total Quotation Send", f"{total_quot:,}"),     unsafe_allow_html=True)
+    k5.markdown(kpi("Total Revenue",        fmt_rev(total_rev)),    unsafe_allow_html=True)
 
     st.markdown("---")
 
-    # ── Charts ────────────────────────────────────────────────────────────────
+    # ── Charts — matching Power BI exactly ───────────────────────────────────
     GOLD = ["#8B6914","#c8a84b","#e8c870","#5a3d10","#f0d890","#3a2800","#d4b060","#a07828","#604008","#e0b840"]
 
     def bl(fig, h=260):
@@ -277,64 +285,64 @@ try:
         d = df[col].value_counts().reset_index(); d.columns=['x','y']
         fig = px.bar(d, x='y', y='x', orientation='h', color_discrete_sequence=[color])
         fig = bl(fig)
-        fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="",
+        fig.update_layout(showlegend=False, xaxis_title="", yaxis_title="",
                           yaxis={'categoryorder':'total ascending'})
         return fig
 
     ch1,ch2,ch3,ch4,ch5 = st.columns(5)
 
-    # 1. Count of Source — from Lead sheet (Source col = Meeting/Calling/etc.)
+    # 1. Count of Source by Source — Lead sheet, Source col
     with ch1:
-        st.markdown('<div class="chart-box"><div class="chart-title">Count of Source</div>', unsafe_allow_html=True)
-        lead_f = act[act['_sheet']=='Lead']
-        if 'Source' in lead_f.columns and not lead_f.empty:
-            fig = hbar(lead_f.dropna(subset=['Source']), 'Source', "#8B6914")
+        st.markdown('<div class="chart-box"><div class="chart-title">Count of Source by Source</div>', unsafe_allow_html=True)
+        if 'Source' in lF.columns and not lF.empty:
+            d = lF['Source'].value_counts().reset_index(); d.columns=['Source','Count']
+            fig = px.bar(d, x='Source', y='Count', color='Source', color_discrete_sequence=GOLD)
+            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_tickangle=-35, xaxis_title="", yaxis_title="Count")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Source column not found in Lead sheet")
+            st.info("Source column not in Lead sheet")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 2. Competitor (Visit) — from Visitor sheet "Meyer Existing Customer" → renamed Competitor
+    # 2. Competitors (Visit) — Visitor sheet, Competitors col (was "Meyer Existing Customer")
     with ch2:
         st.markdown('<div class="chart-box"><div class="chart-title">Competitors (Visit)</div>', unsafe_allow_html=True)
-        vis_f = act[act['_sheet']=='Visitor']
-        if 'Competitor' in vis_f.columns and not vis_f.empty:
-            d = vis_f['Competitor'].value_counts().reset_index(); d.columns=['x','y']
+        if 'Competitors' in vF.columns and not vF.empty:
+            d = vF['Competitors'].value_counts().reset_index(); d.columns=['x','y']
             fig = px.pie(d, names='x', values='y', hole=0.3, color_discrete_sequence=GOLD)
             fig = bl(fig); fig.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Competitor column not found in Visitor sheet")
+            st.info("Competitors column not found")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 3. User Sales — count of Sales rows per User
+    # 3. User Sales — Sales sheet, count per User
     with ch3:
         st.markdown('<div class="chart-box"><div class="chart-title">User Sales</div>', unsafe_allow_html=True)
-        if not salF.empty and 'User' in salF.columns:
-            fig = hbar(salF.dropna(subset=['User']), 'User', "#c8a84b")
+        if 'User' in sF.columns and not sF.empty:
+            fig = hbar(sF.dropna(subset=['User']), 'User', "#c8a84b")
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No sales data")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 4. Lead Type Sales — from Sales sheet
+    # 4. Lead Type Sales — Sales sheet, count per Lead Type
     with ch4:
         st.markdown('<div class="chart-box"><div class="chart-title">Lead Type Sales</div>', unsafe_allow_html=True)
-        if not salF.empty and 'Lead Type' in salF.columns:
-            fig = hbar(salF.dropna(subset=['Lead Type']), 'Lead Type', "#e8c870")
+        if 'Lead Type' in sF.columns and not sF.empty:
+            fig = hbar(sF.dropna(subset=['Lead Type']), 'Lead Type', "#e8c870")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No Lead Type in sales data")
+            st.info("No Lead Type in sales")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 5. State Sales — from Sales sheet
+    # 5. State Sales — Sales sheet, count per State
     with ch5:
         st.markdown('<div class="chart-box"><div class="chart-title">State Sales</div>', unsafe_allow_html=True)
-        if not salF.empty and 'State' in salF.columns:
-            fig = hbar(salF.dropna(subset=['State']), 'State', "#f0d890")
+        if 'State' in sF.columns and not sF.empty:
+            fig = hbar(sF.dropna(subset=['State']), 'State', "#f0d890")
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("No State in sales data")
+            st.info("No State in sales")
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
@@ -346,31 +354,33 @@ try:
 
     with t1:
         st.markdown('<div class="sec-hdr">📋 Lead &amp; Visitor Log</div>', unsafe_allow_html=True)
-        lv_cols = sc(act, ['Date','Customer Name','Contact Person','User',
-                           'State','City','Lead Type','Source','Stage','Remarks','_sheet'])
-        lv = act[lv_cols].reset_index(drop=True)
+        # Combined_Activity_Log view — matches Power BI bottom left table
+        lv_cols = sc(actF, ['Date','Customer Name','Contact Person','User',
+                            'State','City','Lead Type','Source','Stage','Remark','Competitors','_src'])
+        lv = actF[lv_cols].reset_index(drop=True)
         if 'Date' in lv.columns: lv = lv.sort_values('Date', ascending=False).reset_index(drop=True)
         st.dataframe(lv, use_container_width=True, height=360)
 
     with t2:
         st.markdown('<div class="sec-hdr">💰 Sales Records</div>', unsafe_allow_html=True)
-        s_cols = sc(salF, ['Date','Customer Name','User','Lead Type','Products','Amount','GST','State'])
-        s_tbl = salF[s_cols].reset_index(drop=True)
+        s_cols = sc(sF, ['Date','Customer Name','User','Lead Type','Products','Amount','GST','State'])
+        s_tbl = sF[s_cols].reset_index(drop=True)
         if 'Date' in s_tbl.columns: s_tbl = s_tbl.sort_values('Date', ascending=False).reset_index(drop=True)
         st.dataframe(s_tbl, use_container_width=True, height=360)
 
     # ── Debug ─────────────────────────────────────────────────────────────────
-    with st.expander("🔧 Debug — data counts & columns"):
-        st.write(f"**Visitors:** {len(activity_df[activity_df['_sheet']=='Visitor'])} rows")
-        st.write(f"**Leads:** {len(activity_df[activity_df['_sheet']=='Lead'])} rows")
-        st.write(f"**Sales:** {len(sales_df)} rows")
-        st.write("**Visitor cols:**", activity_df[activity_df['_sheet']=='Visitor'].columns.tolist())
-        st.write("**Lead cols:**",    activity_df[activity_df['_sheet']=='Lead'].columns.tolist())
-        st.write("**Sales cols:**",   sales_df.columns.tolist())
-        if 'Stage' in activity_df.columns:
-            st.write("**Stage values:**", activity_df['Stage'].dropna().unique().tolist())
-        if 'Amount' in sales_df.columns:
-            st.write("**Sample Amounts:**", sales_df['Amount'].head(5).tolist())
+    with st.expander("🔧 Debug — verify counts match Power BI"):
+        st.write(f"**Visitor rows (unfiltered):** {len(vdf)}  ← should be 471")
+        st.write(f"**Lead rows (unfiltered):** {len(ldf)}  ← should be 155")
+        st.write(f"**Sales rows (unfiltered):** {len(sdf)}  ← should be 23")
+        st.write(f"**Quotation rows (unfiltered):** {len(ldf[ldf['Stage'].astype(str).str.contains('quot', na=False, case=False)]) if 'Stage' in ldf.columns else 'Stage col missing'}  ← should be 66")
+        st.write("**Visitor cols:**", vdf.columns.tolist())
+        st.write("**Lead cols:**",    ldf.columns.tolist())
+        st.write("**Sales cols:**",   sdf.columns.tolist())
+        if 'Stage' in ldf.columns:
+            st.write("**Stage unique values:**", ldf['Stage'].dropna().unique().tolist())
+        if 'Amount' in sdf.columns:
+            st.write("**Revenue (unfiltered):**", sdf['Amount'].sum())
 
     st.markdown("""<div style="text-align:center;color:#8a7030;font-size:0.72rem;margin-top:16px;font-style:italic;">
       NICPL · Auto-refreshes every 60 s</div>""", unsafe_allow_html=True)
