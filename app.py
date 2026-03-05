@@ -2,66 +2,73 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# 1. Page Configuration
 st.set_page_config(page_title="NIC Sales Dashboard", layout="wide")
 st.title("📈 North India Compressors Sales Dashboard")
 
-# 2. Load Data from your Published CSV link
 SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mbaWwJ8lTdMMgsYo2zuXM9rEmoIQ_AlEqd6GudLDaIoAViA5OE1ppjqmujNOAj/pub?output=csv"
 
-@st.cache_data(ttl=60) # Refresh data every minute
+@st.cache_data(ttl=60)
 def load_data():
-    # Read the CSV and skip any empty rows
     df = pd.read_csv(SHEET_URL)
+    # Clean up column names (remove hidden spaces)
+    df.columns = df.columns.str.strip()
     return df
 
 try:
     df = load_data()
 
-    # 3. Sidebar Filters
+    # --- Sidebar Filters ---
     st.sidebar.header("Filter Options")
-    # Clean up 'User' column for filtering
+    # Using 'User' since we see it's working in your screenshot
     user_list = df['User'].dropna().unique().tolist()
     selected_users = st.sidebar.multiselect("Select User:", options=user_list, default=user_list)
-    
-    # Apply Filter
     df_filtered = df[df['User'].isin(selected_users)]
 
-    # 4. KPI Metrics (Top Row)
-    # Note: Adjust column names if your sheet uses different headers
-    total_visitors = len(df_filtered)
-    total_leads = len(df_filtered[df_filtered['Status'].str.contains('Lead', na=False)])
-    total_sales = len(df_filtered[df_filtered['Status'].str.contains('Sale', na=False)])
-    
-    # Calculate revenue if an 'Amount' or 'PO Amount' column exists
-    revenue_col = 'Amount' if 'Amount' in df_filtered.columns else None
-    total_revenue = df_filtered[revenue_col].sum() if revenue_col else 0
-
+    # --- KPI Calculations with Safety Checks ---
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Total Visitors", total_visitors)
-    col2.metric("Total Leads", total_leads)
-    col3.metric("Total Sales", total_sales)
-    col4.metric("Total Revenue", f"₹{total_revenue:,.0f}")
+    
+    # 1. Total Visitors
+    col1.metric("Total Visitors", len(df_filtered))
+
+    # 2. Total Leads (Checks for 'Status' or similar column)
+    status_col = 'Status' if 'Status' in df_filtered.columns else None
+    if status_col:
+        leads = len(df_filtered[df_filtered[status_col].str.contains('Lead', na=False, case=False)])
+        sales = len(df_filtered[df_filtered[status_col].str.contains('Sale', na=False, case=False)])
+    else:
+        leads = "N/A"
+        sales = "N/A"
+    
+    col2.metric("Total Leads", leads)
+    col3.metric("Total Sales", sales)
+
+    # 3. Total Revenue
+    rev_col = 'Amount' if 'Amount' in df_filtered.columns else ('PO Amount' if 'PO Amount' in df_filtered.columns else None)
+    total_rev = df_filtered[rev_col].sum() if rev_col else 0
+    col4.metric("Total Revenue", f"₹{total_rev:,.0f}")
 
     st.markdown("---")
 
-    # 5. Charts (Middle Row)
-    chart_col1, chart_col2 = st.columns(2)
+    # --- Charts ---
+    c1, c2 = st.columns(2)
+    with c1:
+        source_col = 'Source' if 'Source' in df_filtered.columns else None
+        if source_col:
+            st.subheader("Count of Source")
+            fig = px.bar(df_filtered, x=source_col, color=source_col, template="plotly_white")
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.warning("Column 'Source' not found for chart.")
 
-    with chart_col1:
-        st.subheader("Count of Source")
-        fig_source = px.bar(df_filtered, x='Source', color='Source', template="plotly_white")
-        st.plotly_chart(fig_source, use_container_width=True)
-
-    with chart_col2:
-        st.subheader("User Sales Performance")
+    with c2:
+        st.subheader("User Distribution")
         fig_user = px.pie(df_filtered, names='User', hole=0.4)
         st.plotly_chart(fig_user, use_container_width=True)
 
-    # 6. Detailed Data Table
-    st.subheader("Lead & Visitor Details")
-    st.dataframe(df_filtered, use_container_width=True)
+    # --- Raw Data ---
+    st.subheader("Data Preview")
+    st.dataframe(df_filtered)
 
 except Exception as e:
-    st.error(f"Error loading dashboard: {e}")
-    st.info("Check if your Google Sheet column names match: 'User', 'Source', 'Status', and 'Amount'.")
+    st.error(f"Dashboard Error: {e}")
+    st.write("Current Columns found in your sheet:", df.columns.tolist())
