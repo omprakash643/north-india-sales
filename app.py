@@ -163,36 +163,76 @@ try:
         st.session_state['fend']   = st.date_input("To",   value=st.session_state['fend'],
             min_value=min_d, max_value=max_d, label_visibility="collapsed", key="ed")
 
+    # ── FIXED FILTER PANEL ──────────────────────────────────────────────────
     def pill_group(sk, items, label, ncols, ctx):
         with ctx:
             st.markdown(f'<div class="filter-label">{label}</div>', unsafe_allow_html=True)
+            
+            # Check if everything is currently selected
             all_sel = st.session_state[sk] == set(items)
+            
+            # Select All / Clear All Button
             if st.button("✓ Select All" if all_sel else "Select All", key=f"{sk}_all"):
-                st.session_state[sk] = set(items) if not all_sel else set()
+                if all_sel:
+                    st.session_state[sk] = set() # Clear everything
+                else:
+                    st.session_state[sk] = set(items) # Select everything
                 st.rerun()
-            for row in [items[i:i+ncols] for i in range(0,len(items),ncols)]:
+
+            # Individual Item Buttons
+            for row in [items[i:i+ncols] for i in range(0, len(items), ncols)]:
                 cs = st.columns(len(row))
-                for ci,item in enumerate(row):
-                    active = item in st.session_state[sk]
-                    if cs[ci].button(f"✓ {item}" if active else item, key=f"{sk}_{item}"):
-                        if active: st.session_state[sk].discard(item)
-                        else:      st.session_state[sk].add(item)
+                for ci, item in enumerate(row):
+                    is_active = item in st.session_state[sk]
+                    # Change look of button if active
+                    btn_label = f"✓ {item}" if is_active else str(item)
+                    if cs[ci].button(btn_label, key=f"{sk}_{item}"):
+                        if is_active:
+                            st.session_state[sk].remove(item)
+                        else:
+                            st.session_state[sk].add(item)
                         st.rerun()
 
+    # Apply the pill groups
     pill_group('su', master_users,  "👤 Master User",  3, fc1)
     pill_group('sl', master_leads,  "🏷️ Master Lead",  2, fc2)
     pill_group('ss', master_states, "📍 Master State", 3, fc3)
 
-    with fc4:
-        st.markdown('<div class="filter-label">&nbsp;</div>', unsafe_allow_html=True)
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        if st.button("🔄\nReset", key="reset"):
-            for k in ['su','sl','ss','fstart','fend']:
-                if k in st.session_state: del st.session_state[k]
-            st.rerun()
+    # ── FIXED APPLY FILTERS FUNCTION ──────────────────────────────────────────
+    def apply_all_filters(df_to_filter):
+        d = df_to_filter.copy()
+        
+        # 1. Date Filter
+        if 'Date' in d.columns:
+            d = d[(d['Date'].dt.date >= st.session_state['fstart']) &
+                  (d['Date'].dt.date <= st.session_state['fend'])]
+        
+        # 2. User Filter (Only filter if the set isn't empty)
+        if 'User' in d.columns and st.session_state['su']:
+            d = d[d['User'].astype(str).isin(st.session_state['su'])]
+        elif 'User' in d.columns and not st.session_state['su']:
+            d = d.iloc[0:0] # Show nothing if no users are selected
+            
+        # 3. Lead Type Filter
+        if 'Lead Type' in d.columns and st.session_state['sl']:
+            d = d[d['Lead Type'].astype(str).isin(st.session_state['sl'])]
+        elif 'Lead Type' in d.columns and not st.session_state['sl']:
+            d = d.iloc[0:0]
 
-    st.markdown('</div>', unsafe_allow_html=True)
+        # 4. State Filter
+        if 'State' in d.columns and st.session_state['ss']:
+            d = d[d['State'].astype(str).isin(st.session_state['ss'])]
+        elif 'State' in d.columns and not st.session_state['ss']:
+            d = d.iloc[0:0]
+            
+        return d
 
+    # Run the filtering on all your tables
+    vF   = apply_all_filters(vdf)
+    lF   = apply_all_filters(ldf)
+    sF   = apply_all_filters(sdf)
+    # This is the most important one for your tables and charts:
+    actF = apply_all_filters(combined)
     # ── Apply Filters — matches Power BI slicer propagation ──────────────────
     def filt(df):
         d = df.copy()
