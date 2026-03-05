@@ -33,7 +33,7 @@ const PALETTE = [
 const FONT_HEAD = "'Syne', 'Segoe UI', sans-serif";
 const FONT_BODY = "'IBM Plex Mono', 'Courier New', monospace";
 
-/* ─── UTILS ─────────────────────────────────────────────────────────────────── */
+#/* ─── UTILS ─────────────────────────────────────────────────────────────────── */
 function detectType(values) {
   const s = values.filter(v => v !== null && v !== undefined && v !== "").slice(0, 30);
   if (!s.length) return "string";
