@@ -132,10 +132,9 @@ try:
     QUOT_KW  = r'quotation|quote sent|quot'
     LEAD_KW  = r'enquir|lead|interest|need|require|looking|want|discuss'
 
-    has_status = 'Status' in dff.columns
-    has_remark = 'Remark' in dff.columns
-
-    total_visitors = len(dff)
+    135: SALE_KW  = r'po received|advance|payment|sale|order confirm|finali|install'
+    136: QUOT_KW  = r'quotation|quote sent|quot'
+    137: LEAD_KW  = r'enquir|lead|interest|need|require|looking|want|discuss'
 
     if has_status:
         total_leads = len(dff[dff['Status'].str.contains('lead|visitor', na=False, case=False)])
