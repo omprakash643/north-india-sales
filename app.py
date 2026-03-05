@@ -199,40 +199,23 @@ try:
     pill_group('ss', master_states, "📍 Master State", 3, fc3)
 
     # ── FIXED APPLY FILTERS FUNCTION ──────────────────────────────────────────
-    def apply_all_filters(df_to_filter):
-        d = df_to_filter.copy()
-        
-        # 1. Date Filter
-        if 'Date' in d.columns:
-            d = d[(d['Date'].dt.date >= st.session_state['fstart']) &
-                  (d['Date'].dt.date <= st.session_state['fend'])]
-        
-        # 2. User Filter (Only filter if the set isn't empty)
-        if 'User' in d.columns and st.session_state['su']:
-            d = d[d['User'].astype(str).isin(st.session_state['su'])]
-        elif 'User' in d.columns and not st.session_state['su']:
-            d = d.iloc[0:0] # Show nothing if no users are selected
-            
-        # 3. Lead Type Filter
-        if 'Lead Type' in d.columns and st.session_state['sl']:
-            d = d[d['Lead Type'].astype(str).isin(st.session_state['sl'])]
-        elif 'Lead Type' in d.columns and not st.session_state['sl']:
-            d = d.iloc[0:0]
+    def filt(df):
+    d = df.copy()
 
-        # 4. State Filter
-        if 'State' in d.columns and st.session_state['ss']:
-            d = d[d['State'].astype(str).isin(st.session_state['ss'])]
-        elif 'State' in d.columns and not st.session_state['ss']:
-            d = d.iloc[0:0]
-            
-        return d
+    if 'Date' in d.columns:
+        d = d[(d['Date'].dt.date >= st.session_state['fstart']) &
+              (d['Date'].dt.date <= st.session_state['fend'])]
 
-    # Run the filtering on all your tables
-    vF   = apply_all_filters(vdf)
-    lF   = apply_all_filters(ldf)
-    sF   = apply_all_filters(sdf)
-    # This is the most important one for your tables and charts:
-    actF = apply_all_filters(combined)
+    if 'User' in d.columns:
+        d = d[d['User'].astype(str).isin(st.session_state['su'])]
+
+    if 'Lead Type' in d.columns:
+        d = d[d['Lead Type'].astype(str).isin(st.session_state['sl'])]
+
+    if 'State' in d.columns:
+        d = d[d['State'].astype(str).isin(st.session_state['ss'])]
+
+    return d
     # ── Apply Filters — matches Power BI slicer propagation ──────────────────
     def filt(df):
         d = df.copy()
