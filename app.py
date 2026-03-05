@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 from datetime import date
+import re
 
 st.set_page_config(page_title="NIC Sales Dashboard", layout="wide", initial_sidebar_state="collapsed")
 
@@ -72,44 +73,56 @@ hr { border-color:#b8a040; opacity:0.35; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Sheet URLs (all 3 tabs published) ────────────────────────────────────────
+# ── Sheet URLs ────────────────────────────────────────────────────────────────
 VISITOR_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mbaWwJ8lTdMMgsYo2zuXM9rEmoIQ_AlEqd6GudLDaIoAViA5OE1ppjqmujNOAj/pub?gid=0&single=true&output=csv"
 LEAD_URL    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mbaWwJ8lTdMMgsYo2zuXM9rEmoIQ_AlEqd6GudLDaIoAViA5OE1ppjqmujNOAj/pub?gid=2066525621&single=true&output=csv"
 SALES_URL   = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mbaWwJ8lTdMMgsYo2zuXM9rEmoIQ_AlEqd6GudLDaIoAViA5OE1ppjqmujNOAj/pub?gid=23552387&single=true&output=csv"
 
+def clean_amount(val):
+    """Convert any amount value to float safely — handles commas, ₹, strings."""
+    try:
+        if pd.isna(val): return 0.0
+        return float(str(val).replace(',','').replace('₹','').replace(' ','').strip())
+    except:
+        return 0.0
+
 @st.cache_data(ttl=60)
 def load_all():
-    # ── Visitor sheet ─────────────────────────────────────────────────────────
-    # Cols: Date, Lead Type, User, Customer Name, Contact Person,
-    #       State, City, Meyer Existing Customer, Remarks
+    # ── Visitor: Date, Lead Type, User, Customer Name, Contact Person,
+    #             State, City, Meyer Existing Customer, Remarks
     vdf = pd.read_csv(VISITOR_URL)
     vdf.columns = vdf.columns.str.strip()
     vdf['_sheet'] = 'Visitor'
 
-    # ── Lead sheet ────────────────────────────────────────────────────────────
-    # Cols: Date, UQN No., Source, User, Customer Name, Contact Person,
-    #       Mobile, Remarks, Address Detail, State, Lead Type,
-    #       Stage, Last Follow Date, G S T No
+    # ── Lead: Date, UQN No., Source, User, Customer Name, Contact Person,
+    #          Mobile, Remarks, Address Detail, State, Lead Type,
+    #          Stage, Last Follow Date, G S T No
     ldf = pd.read_csv(LEAD_URL)
     ldf.columns = ldf.columns.str.strip()
     ldf['_sheet'] = 'Lead'
 
-    # ── Sales sheet ───────────────────────────────────────────────────────────
-    # Cols: Date, Customer, User, Lead Type, Products, PO Amount, GST, State
+    # ── Sales: Date, Customer, User, Lead Type, Products, PO Amount, GST, State
     sdf = pd.read_csv(SALES_URL)
     sdf.columns = sdf.columns.str.strip()
-    sdf.rename(columns={
-        'Customer':  'Customer Name',
-        'PO Amount': 'Amount',
-    }, inplace=True)
+    # Rename columns
+    sdf.rename(columns={'Customer': 'Customer Name', 'PO Amount': 'Amount'}, inplace=True)
+    # Clean Amount column — fix "Unknown format code 'f' for object of type 'str'"
+    if 'Amount' in sdf.columns:
+        sdf['Amount'] = sdf['Amount'].apply(clean_amount)
     sdf['_sheet'] = 'Sales'
 
-    # ── Parse dates ───────────────────────────────────────────────────────────
+    # ── Parse dates for all sheets ────────────────────────────────────────────
     for df in [vdf, ldf, sdf]:
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 
-    # ── Combine Visitor + Lead into activity log ──────────────────────────────
+    # ── Normalise Remark column name in visitor sheet ─────────────────────────
+    # Visitor has "Remarks", Lead has "Remarks" too — keep as-is
+    # Visitor has "Meyer Existing Customer" — rename for clarity
+    if 'Meyer Existing Customer' in vdf.columns:
+        vdf.rename(columns={'Meyer Existing Customer': 'Competitor'}, inplace=True)
+
+    # ── Combine Visitor + Lead into one activity log ──────────────────────────
     activity = pd.concat([vdf, ldf], ignore_index=True)
 
     return activity, sdf
@@ -117,21 +130,20 @@ def load_all():
 try:
     activity_df, sales_df = load_all()
 
-    # ── Build filter options from ALL data (unfiltered) ───────────────────────
+    # ── Filter options ────────────────────────────────────────────────────────
     def uniq(col):
-        if col not in activity_df.columns: return []
-        return sorted(activity_df[col].dropna().astype(str).unique().tolist())
+        vals = []
+        if col in activity_df.columns:
+            vals += activity_df[col].dropna().astype(str).unique().tolist()
+        if col in sales_df.columns:
+            vals += sales_df[col].dropna().astype(str).unique().tolist()
+        return sorted(set(vals))
 
     all_users  = uniq('User')
     all_leads  = uniq('Lead Type')
     all_states = uniq('State')
 
-    # Add states from sales too
-    if 'State' in sales_df.columns:
-        extra = sales_df['State'].dropna().astype(str).unique().tolist()
-        all_states = sorted(set(all_states) | set(extra))
-
-    for k, v in [('su', set(all_users)), ('sl', set(all_leads)), ('ss', set(all_states))]:
+    for k, v in [('su',set(all_users)),('sl',set(all_leads)),('ss',set(all_states))]:
         if k not in st.session_state: st.session_state[k] = v
 
     min_d = activity_df['Date'].dropna().min().date()
@@ -208,28 +220,44 @@ try:
     act  = filt(activity_df)
     salF = filt(sales_df)
 
-    # ── KPIs — exact counts from each sheet ───────────────────────────────────
-    visitors  = len(act[act['_sheet'] == 'Visitor'])
-    leads     = len(act[act['_sheet'] == 'Lead'])
-    sales_cnt = len(salF)
-    revenue   = salF['Amount'].sum() if 'Amount' in salF.columns else 0
+    # ── KPIs ─────────────────────────────────────────────────────────────────
+    # Power BI uses Combined_Activity_Log for visitors+leads count
+    # Visitor sheet  → Total Visitors
+    # Lead sheet     → Total Leads
+    # Sales sheet    → Total Sales
+    # Lead Stage="Quotation Send" → Total Quotation Send
+    # Sum(PO Amount) from Sales   → Total Revenue
 
-    # Quotations = Lead rows where Stage contains "Quotation"
-    lead_rows = act[act['_sheet'] == 'Lead']
-    if 'Stage' in lead_rows.columns:
-        quot = len(lead_rows[lead_rows['Stage'].astype(str).str.contains('quot', na=False, case=False)])
+    visitors  = len(act[act['_sheet'] == 'Visitor'])
+    leads_all = act[act['_sheet'] == 'Lead']
+    leads_cnt = len(leads_all)
+    sales_cnt = len(salF)
+    revenue   = float(salF['Amount'].sum()) if 'Amount' in salF.columns else 0.0
+
+    if 'Stage' in leads_all.columns:
+        quot = len(leads_all[leads_all['Stage'].astype(str).str.contains('quot', na=False, case=False)])
     else:
         quot = 0
+
+    def fmt_rev(v):
+        """Format revenue safely — always a float by now."""
+        try:
+            v = float(v)
+            if v >= 1_00_00_000:   return f"₹{v/1_00_00_000:.2f} Cr"
+            elif v >= 1_00_000:    return f"₹{v/1_00_000:.1f} L"
+            else:                  return f"₹{v:,.0f}"
+        except:
+            return "—"
 
     def kpi(label, val):
         return f'<div class="kpi-card"><div class="kpi-label">{label}</div><div class="kpi-value">{val}</div></div>'
 
     k1,k2,k3,k4,k5 = st.columns(5)
     k1.markdown(kpi("Total Visitors",       f"{visitors:,}"),  unsafe_allow_html=True)
-    k2.markdown(kpi("Total Lead",           f"{leads:,}"),     unsafe_allow_html=True)
+    k2.markdown(kpi("Total Lead",           f"{leads_cnt:,}"), unsafe_allow_html=True)
     k3.markdown(kpi("Total Sales",          f"{sales_cnt:,}"), unsafe_allow_html=True)
     k4.markdown(kpi("Total Quotation Send", f"{quot:,}"),      unsafe_allow_html=True)
-    k5.markdown(kpi("Total Revenue",        f"₹{revenue:,.0f}" if revenue else "—"), unsafe_allow_html=True)
+    k5.markdown(kpi("Total Revenue",        fmt_rev(revenue)), unsafe_allow_html=True)
 
     st.markdown("---")
 
@@ -248,59 +276,65 @@ try:
     def hbar(df, col, color):
         d = df[col].value_counts().reset_index(); d.columns=['x','y']
         fig = px.bar(d, x='y', y='x', orientation='h', color_discrete_sequence=[color])
-        return bl(fig)
+        fig = bl(fig)
+        fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="",
+                          yaxis={'categoryorder':'total ascending'})
+        return fig
 
     ch1,ch2,ch3,ch4,ch5 = st.columns(5)
 
-    # 1. Source (from Lead sheet)
+    # 1. Count of Source — from Lead sheet (Source col = Meeting/Calling/etc.)
     with ch1:
-        st.markdown('<div class="chart-box"><div class="chart-title">Count by Source</div>', unsafe_allow_html=True)
-        src = act[act['_sheet']=='Lead']
-        if 'Source' in src.columns and not src.empty:
-            fig = hbar(src.dropna(subset=['Source']), 'Source', "#8B6914")
-            fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="",
-                              yaxis={'categoryorder':'total ascending'})
+        st.markdown('<div class="chart-box"><div class="chart-title">Count of Source</div>', unsafe_allow_html=True)
+        lead_f = act[act['_sheet']=='Lead']
+        if 'Source' in lead_f.columns and not lead_f.empty:
+            fig = hbar(lead_f.dropna(subset=['Source']), 'Source', "#8B6914")
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Source column not found in Lead sheet")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 2. State pie (all activity)
+    # 2. Competitor (Visit) — from Visitor sheet "Meyer Existing Customer" → renamed Competitor
     with ch2:
-        st.markdown('<div class="chart-box"><div class="chart-title">State Distribution</div>', unsafe_allow_html=True)
-        if 'State' in act.columns:
-            d = act['State'].value_counts().reset_index(); d.columns=['x','y']
-            fig = px.pie(d, names='x', values='y', hole=0.35, color_discrete_sequence=GOLD)
+        st.markdown('<div class="chart-box"><div class="chart-title">Competitors (Visit)</div>', unsafe_allow_html=True)
+        vis_f = act[act['_sheet']=='Visitor']
+        if 'Competitor' in vis_f.columns and not vis_f.empty:
+            d = vis_f['Competitor'].value_counts().reset_index(); d.columns=['x','y']
+            fig = px.pie(d, names='x', values='y', hole=0.3, color_discrete_sequence=GOLD)
             fig = bl(fig); fig.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Competitor column not found in Visitor sheet")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 3. User activity
+    # 3. User Sales — count of Sales rows per User
     with ch3:
-        st.markdown('<div class="chart-box"><div class="chart-title">User Activity</div>', unsafe_allow_html=True)
-        if 'User' in act.columns:
-            fig = hbar(act.dropna(subset=['User']), 'User', "#c8a84b")
-            fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="",
-                              yaxis={'categoryorder':'total ascending'})
+        st.markdown('<div class="chart-box"><div class="chart-title">User Sales</div>', unsafe_allow_html=True)
+        if not salF.empty and 'User' in salF.columns:
+            fig = hbar(salF.dropna(subset=['User']), 'User', "#c8a84b")
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No sales data")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 4. Lead Type (sales)
+    # 4. Lead Type Sales — from Sales sheet
     with ch4:
-        st.markdown('<div class="chart-box"><div class="chart-title">Lead Type (Sales)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="chart-box"><div class="chart-title">Lead Type Sales</div>', unsafe_allow_html=True)
         if not salF.empty and 'Lead Type' in salF.columns:
             fig = hbar(salF.dropna(subset=['Lead Type']), 'Lead Type', "#e8c870")
-            fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="",
-                              yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No Lead Type in sales data")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 5. State (sales)
+    # 5. State Sales — from Sales sheet
     with ch5:
-        st.markdown('<div class="chart-box"><div class="chart-title">State (Sales)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="chart-box"><div class="chart-title">State Sales</div>', unsafe_allow_html=True)
         if not salF.empty and 'State' in salF.columns:
             fig = hbar(salF.dropna(subset=['State']), 'State', "#f0d890")
-            fig.update_layout(showlegend=False, xaxis_title="Count", yaxis_title="",
-                              yaxis={'categoryorder':'total ascending'})
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("No State in sales data")
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
@@ -312,8 +346,8 @@ try:
 
     with t1:
         st.markdown('<div class="sec-hdr">📋 Lead &amp; Visitor Log</div>', unsafe_allow_html=True)
-        lv_cols = sc(act, ['Date','Customer Name','Contact Person','User','State',
-                           'City','Lead Type','Source','Stage','Remarks','_sheet'])
+        lv_cols = sc(act, ['Date','Customer Name','Contact Person','User',
+                           'State','City','Lead Type','Source','Stage','Remarks','_sheet'])
         lv = act[lv_cols].reset_index(drop=True)
         if 'Date' in lv.columns: lv = lv.sort_values('Date', ascending=False).reset_index(drop=True)
         st.dataframe(lv, use_container_width=True, height=360)
@@ -325,11 +359,18 @@ try:
         if 'Date' in s_tbl.columns: s_tbl = s_tbl.sort_values('Date', ascending=False).reset_index(drop=True)
         st.dataframe(s_tbl, use_container_width=True, height=360)
 
-    with st.expander("🔧 Debug"):
-        st.write(f"Visitors: {len(activity_df[activity_df['_sheet']=='Visitor'])} | Leads: {len(activity_df[activity_df['_sheet']=='Lead'])} | Sales: {len(sales_df)}")
-        st.write("Visitor cols:", [c for c in activity_df.columns if c != '_sheet'][:12])
-        st.write("Lead cols:",    list(activity_df[activity_df['_sheet']=='Lead'].columns)[:14])
-        st.write("Sales cols:",   sales_df.columns.tolist())
+    # ── Debug ─────────────────────────────────────────────────────────────────
+    with st.expander("🔧 Debug — data counts & columns"):
+        st.write(f"**Visitors:** {len(activity_df[activity_df['_sheet']=='Visitor'])} rows")
+        st.write(f"**Leads:** {len(activity_df[activity_df['_sheet']=='Lead'])} rows")
+        st.write(f"**Sales:** {len(sales_df)} rows")
+        st.write("**Visitor cols:**", activity_df[activity_df['_sheet']=='Visitor'].columns.tolist())
+        st.write("**Lead cols:**",    activity_df[activity_df['_sheet']=='Lead'].columns.tolist())
+        st.write("**Sales cols:**",   sales_df.columns.tolist())
+        if 'Stage' in activity_df.columns:
+            st.write("**Stage values:**", activity_df['Stage'].dropna().unique().tolist())
+        if 'Amount' in sales_df.columns:
+            st.write("**Sample Amounts:**", sales_df['Amount'].head(5).tolist())
 
     st.markdown("""<div style="text-align:center;color:#8a7030;font-size:0.72rem;margin-top:16px;font-style:italic;">
       NICPL · Auto-refreshes every 60 s</div>""", unsafe_allow_html=True)
