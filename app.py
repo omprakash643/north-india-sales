@@ -49,26 +49,50 @@ SHEET_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mb
 def load_data():
     df = pd.read_csv(SHEET_URL)
     df.columns = df.columns.str.strip()
-    # Normalise date
+
+    # ── Step 1: De-duplicate column names FIRST (before any renaming) ──────
+    seen = {}
+    new_cols = []
+    for col in df.columns:
+        if col in seen:
+            seen[col] += 1
+            new_cols.append(f"{col}_{seen[col]}")
+        else:
+            seen[col] = 0
+            new_cols.append(col)
+    df.columns = new_cols
+
+    # ── Step 2: Parse date ──────────────────────────────────────────────────
     for col in df.columns:
         if col.strip().lower() == 'date':
-            df.rename(columns={col: 'Date'}, inplace=True)
-            df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+            df['Date'] = pd.to_datetime(df[col], errors='coerce')
+            if col != 'Date':
+                df.drop(columns=[col], inplace=True)
             break
-    rename_map = {}
-    for col in df.columns:
-        lc = col.strip().lower()
-        if lc == 'user':                           rename_map[col] = 'User'
-        elif 'customer' in lc:                     rename_map[col] = 'Customer Name'
-        elif 'contact' in lc:                      rename_map[col] = 'Contact Person'
-        elif lc == 'remark':                       rename_map[col] = 'Remark'
-        elif lc == 'state':                        rename_map[col] = 'State'
-        elif 'lead type' in lc or lc=='leadtype':  rename_map[col] = 'Lead Type'
-        elif lc == 'status':                       rename_map[col] = 'Status'
-        elif lc == 'source':                       rename_map[col] = 'Source'
-        elif 'compet' in lc:                       rename_map[col] = 'Competitor'
-        elif 'amount' in lc or lc.startswith('po'): rename_map[col] = 'Amount'
-    df.rename(columns=rename_map, inplace=True)
+
+    # ── Step 3: Safe rename — only rename if target doesn't already exist ───
+    def safe_rename(df, src_keywords, target, exact=False):
+        if target in df.columns:
+            return df   # already exists, skip
+        for col in df.columns:
+            lc = col.strip().lower()
+            match = (lc == src_keywords) if exact else any(k in lc for k in (src_keywords if isinstance(src_keywords, list) else [src_keywords]))
+            if match and col != target:
+                df.rename(columns={col: target}, inplace=True)
+                return df
+        return df
+
+    df = safe_rename(df, 'user',        'User',          exact=True)
+    df = safe_rename(df, ['customer'],  'Customer Name')
+    df = safe_rename(df, ['contact'],   'Contact Person')
+    df = safe_rename(df, 'remark',      'Remark',        exact=True)
+    df = safe_rename(df, 'state',       'State',         exact=True)
+    df = safe_rename(df, ['lead type', 'leadtype'], 'Lead Type')
+    df = safe_rename(df, 'status',      'Status',        exact=True)
+    df = safe_rename(df, 'source',      'Source',        exact=True)
+    df = safe_rename(df, ['compet'],    'Competitor')
+    df = safe_rename(df, ['amount', 'po amount'], 'Amount')
+
     return df
 
 try:
@@ -128,13 +152,14 @@ try:
     if sel_states and 'State'     in dff.columns: dff = dff[dff['State'].isin(sel_states)]
 
     # ── KPIs ─────────────────────────────────────────────────────────────────
-    SALE_KW  = r'po received|advance|payment|sale|order confirm|finali|install'
-    QUOT_KW  = r'quotation|quote sent|quot'
-    LEAD_KW  = r'enquir|lead|interest|need|require|looking|want|discuss'
+    SALE_KW = r'po received|advance|payment|sale|order confirm|finali|install'
+    QUOT_KW = r'quotation|quote sent|quot'
+    LEAD_KW = r'enquir|lead|interest|need|require|looking|want|discuss'
 
-    135: SALE_KW  = r'po received|advance|payment|sale|order confirm|finali|install'
-    136: QUOT_KW  = r'quotation|quote sent|quot'
-    137: LEAD_KW  = r'enquir|lead|interest|need|require|looking|want|discuss'
+    has_status = 'Status' in dff.columns
+    has_remark = 'Remark' in dff.columns
+
+    total_visitors = len(dff)
 
     if has_status:
         total_leads = len(dff[dff['Status'].str.contains('lead|visitor', na=False, case=False)])
@@ -180,11 +205,12 @@ try:
         src_col = 'Source' if 'Source' in dff.columns else ('Lead Type' if 'Lead Type' in dff.columns else None)
         if src_col:
             d = dff[src_col].value_counts().reset_index()
-            d.columns = [src_col,'Count']
-            fig = px.bar(d, x=src_col, y='Count', color=src_col, color_discrete_sequence=GOLD)
-            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_tickangle=-35)
+            d.columns = ['Label','Count']
+            fig = px.bar(d, x='Label', y='Count', color='Label', color_discrete_sequence=GOLD)
+            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_tickangle=-35, xaxis_title=src_col)
             st.plotly_chart(fig, use_container_width=True)
-        else: st.info("No Source column")
+        else:
+            st.info("No Source column")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with ch2:
@@ -192,41 +218,45 @@ try:
         pie_col = 'Competitor' if 'Competitor' in dff.columns else ('State' if 'State' in dff.columns else None)
         if pie_col:
             d = dff[pie_col].value_counts().reset_index()
-            d.columns = [pie_col,'Count']
-            fig = px.pie(d, names=pie_col, values='Count', hole=0.3, color_discrete_sequence=GOLD)
+            d.columns = ['Label','Count']
+            fig = px.pie(d, names='Label', values='Count', hole=0.3, color_discrete_sequence=GOLD)
             fig = bl(fig)
             st.plotly_chart(fig, use_container_width=True)
-        else: st.info("No Competitor/State column")
+        else:
+            st.info("No Competitor/State column")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with ch3:
         st.markdown('<div class="chart-box"><div class="chart-title">User Activity</div>', unsafe_allow_html=True)
         if 'User' in dff.columns:
-            d = dff['User'].value_counts().reset_index(); d.columns=['User','Count']
-            fig = px.bar(d, x='Count', y='User', orientation='h', color_discrete_sequence=["#8B6914"])
-            fig = bl(fig); fig.update_layout(yaxis={'categoryorder':'total ascending'})
+            d = dff['User'].value_counts().reset_index(); d.columns=['Label','Count']
+            fig = px.bar(d, x='Count', y='Label', orientation='h', color_discrete_sequence=["#8B6914"])
+            fig = bl(fig); fig.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title='User')
             st.plotly_chart(fig, use_container_width=True)
-        else: st.info("No User column")
+        else:
+            st.info("No User column")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with ch4:
         st.markdown('<div class="chart-box"><div class="chart-title">Lead Type Breakdown</div>', unsafe_allow_html=True)
         if 'Lead Type' in dff.columns:
-            d = dff['Lead Type'].value_counts().reset_index(); d.columns=['Lead Type','Count']
-            fig = px.bar(d, x='Count', y='Lead Type', orientation='h', color_discrete_sequence=["#c8a84b"])
-            fig = bl(fig); fig.update_layout(yaxis={'categoryorder':'total ascending'})
+            d = dff['Lead Type'].value_counts().reset_index(); d.columns=['Label','Count']
+            fig = px.bar(d, x='Count', y='Label', orientation='h', color_discrete_sequence=["#c8a84b"])
+            fig = bl(fig); fig.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title='Lead Type')
             st.plotly_chart(fig, use_container_width=True)
-        else: st.info("No Lead Type column")
+        else:
+            st.info("No Lead Type column")
         st.markdown('</div>', unsafe_allow_html=True)
 
     with ch5:
         st.markdown('<div class="chart-box"><div class="chart-title">State Distribution</div>', unsafe_allow_html=True)
         if 'State' in dff.columns:
-            d = dff['State'].value_counts().reset_index(); d.columns=['State','Count']
-            fig = px.bar(d, x='Count', y='State', orientation='h', color_discrete_sequence=["#e8c870"])
-            fig = bl(fig); fig.update_layout(yaxis={'categoryorder':'total ascending'})
+            d = dff['State'].value_counts().reset_index(); d.columns=['Label','Count']
+            fig = px.bar(d, x='Count', y='Label', orientation='h', color_discrete_sequence=["#e8c870"])
+            fig = bl(fig); fig.update_layout(yaxis={'categoryorder':'total ascending'}, yaxis_title='State')
             st.plotly_chart(fig, use_container_width=True)
-        else: st.info("No State column")
+        else:
+            st.info("No State column")
         st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown("---")
@@ -234,27 +264,36 @@ try:
     # ── Tables ────────────────────────────────────────────────────────────────
     tbl1, tbl2 = st.columns([3, 2])
 
-    lv_cols = [c for c in ['Date','Customer Name','Contact Person','User','State','Lead Type','Remark'] if c in dff.columns]
+    # Only pick columns that exist AND are unique
+    def safe_cols(wanted, df):
+        return [c for c in wanted if c in df.columns]
+
+    lv_cols = safe_cols(['Date','Customer Name','Contact Person','User','State','Lead Type','Remark'], dff)
+
     with tbl1:
         st.markdown('<div class="section-header">📋 Lead &amp; Visitor Log</div>', unsafe_allow_html=True)
-        lv = dff[lv_cols] if lv_cols else dff
-        if 'Date' in lv.columns: lv = lv.sort_values('Date', ascending=False)
+        lv = dff[lv_cols].copy() if lv_cols else dff.copy()
+        # Reset index to avoid any index issues
+        lv = lv.reset_index(drop=True)
+        if 'Date' in lv.columns:
+            lv = lv.sort_values('Date', ascending=False).reset_index(drop=True)
         st.dataframe(lv, use_container_width=True, height=340)
 
     with tbl2:
         st.markdown('<div class="section-header">💰 Sales / PO Records</div>', unsafe_allow_html=True)
         if has_status:
-            sdf = dff[dff['Status'].str.contains('sale', na=False, case=False)]
+            sdf = dff[dff['Status'].str.contains('sale', na=False, case=False)].copy()
         elif has_remark:
-            sdf = dff[dff['Remark'].str.contains(SALE_KW, na=False, case=False)]
+            sdf = dff[dff['Remark'].str.contains(SALE_KW, na=False, case=False)].copy()
         else:
-            sdf = dff.head(30)
-        sc = [c for c in ['Date','Customer Name','User','State','Lead Type','Amount','Remark'] if c in sdf.columns]
-        s_tbl = sdf[sc] if sc else sdf
-        if 'Date' in s_tbl.columns: s_tbl = s_tbl.sort_values('Date', ascending=False)
+            sdf = dff.head(30).copy()
+        sc = safe_cols(['Date','Customer Name','User','State','Lead Type','Amount','Remark'], sdf)
+        s_tbl = sdf[sc].reset_index(drop=True) if sc else sdf.reset_index(drop=True)
+        if 'Date' in s_tbl.columns:
+            s_tbl = s_tbl.sort_values('Date', ascending=False).reset_index(drop=True)
         st.dataframe(s_tbl, use_container_width=True, height=340)
 
-    # ── Debug ─────────────────────────────────────────────────────────────────
+    # ── Debug expander ────────────────────────────────────────────────────────
     with st.expander("🔧 Debug: Columns & Sample Data"):
         st.write("**Detected columns:**", df.columns.tolist())
         st.write(f"**Total rows:** {len(df)}")
