@@ -209,7 +209,7 @@ try:
     status_col = next((c for c in dff.columns if c.lower() == 'status'), None)
 
     total_visitors = len(dff)
-    total_leads    = len(dff[dff[status_col].str.contains('lead', na=False, case=False)]) if status_col else "N/A"
+    total_leads    = total_leads = len(dff[dff[status_col].str.contains('lead', na=False, case=False)])
     total_sales    = len(dff[dff[status_col].str.contains('sale', na=False, case=False)]) if status_col else "N/A"
 
     quot_col = next((c for c in dff.columns if 'quot' in c.lower()), None)
