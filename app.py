@@ -72,7 +72,6 @@ hr { border-color:#b8a040; opacity:0.35; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Sheet URLs ────────────────────────────────────────────────────────────────
 VISITOR_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mbaWwJ8lTdMMgsYo2zuXM9rEmoIQ_AlEqd6GudLDaIoAViA5OE1ppjqmujNOAj/pub?gid=0&single=true&output=csv"
 LEAD_URL    = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mbaWwJ8lTdMMgsYo2zuXM9rEmoIQ_AlEqd6GudLDaIoAViA5OE1ppjqmujNOAj/pub?gid=2066525621&single=true&output=csv"
 SALES_URL   = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTJKBgkAtx6Fm5B4-mbaWwJ8lTdMMgsYo2zuXM9rEmoIQ_AlEqd6GudLDaIoAViA5OE1ppjqmujNOAj/pub?gid=23552387&single=true&output=csv"
@@ -86,80 +85,57 @@ def clean_amount(val):
 
 @st.cache_data(ttl=60)
 def load_all():
-    # ── Visitor sheet ─────────────────────────────────────────────────────────
-    # Date, Lead Type, User, Customer Name, Contact Person,
-    # State, City, Competitors (was "Meyer Existing Customer"), Remark
+    # ── Visitor ───────────────────────────────────────────────────────────────
     vdf = pd.read_csv(VISITOR_URL)
     vdf.columns = vdf.columns.str.strip()
-    # Rename Remark variants
     for c in vdf.columns:
-        if 'remark' in c.lower() or 'remark' in c.lower():
-            vdf.rename(columns={c: 'Remark'}, inplace=True); break
-    # Rename competitor column — could be "Competitors" or "Meyer Existing Customer"
+        if 'remark' in c.lower(): vdf.rename(columns={c:'Remark'}, inplace=True); break
     for c in vdf.columns:
         if 'competitor' in c.lower() or 'meyer' in c.lower() or 'existing' in c.lower():
-            vdf.rename(columns={c: 'Competitors'}, inplace=True); break
+            vdf.rename(columns={c:'Competitors'}, inplace=True); break
     vdf['_src'] = 'Visitor'
 
-    # ── Lead sheet ────────────────────────────────────────────────────────────
-    # Date, UQN No., Source, User, Customer Name, Contact Person,
-    # Mobile, Remark, Address Detail, State, Lead Type,
-    # Stage, Last Follow Date, G S T No
+    # ── Lead ──────────────────────────────────────────────────────────────────
     ldf = pd.read_csv(LEAD_URL)
     ldf.columns = ldf.columns.str.strip()
     for c in ldf.columns:
-        if 'remark' in c.lower():
-            ldf.rename(columns={c: 'Remark'}, inplace=True); break
+        if 'remark' in c.lower(): ldf.rename(columns={c:'Remark'}, inplace=True); break
     ldf['_src'] = 'Lead'
 
-    # ── Sales sheet ───────────────────────────────────────────────────────────
-    # Date, Customer, User, Lead Type, Products, PO Amount, GST, State
+    # ── Sales ─────────────────────────────────────────────────────────────────
     sdf = pd.read_csv(SALES_URL)
     sdf.columns = sdf.columns.str.strip()
-    sdf.rename(columns={'Customer': 'Customer Name', 'PO Amount': 'Amount'}, inplace=True)
+    sdf.rename(columns={'Customer':'Customer Name','PO Amount':'Amount'}, inplace=True)
     if 'Amount' in sdf.columns:
         sdf['Amount'] = sdf['Amount'].apply(clean_amount)
     sdf['_src'] = 'Sales'
 
-    # ── Parse dates ───────────────────────────────────────────────────────────
     for df in [vdf, ldf, sdf]:
         if 'Date' in df.columns:
             df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
 
-    # ── Combined_Activity_Log = Visitor + Lead (matches Power BI model) ───────
-    # Power BI: Total Visitors = COUNTROWS(Visitor_Related_data)
-    #           Total Lead     = COUNTROWS(Lead_Realated_Data)  [note: includes ALL lead rows]
-    #           Total Sales    = COUNTROWS(Sales_Related_Data)
-    #           Total Quotation= COUNTROWS filtered Stage="Quotation Send"
     combined = pd.concat([vdf, ldf], ignore_index=True)
 
-    # ── Master tables (unique values across all sheets for filters) ───────────
-    master_users  = sorted(set(
-        vdf['User'].dropna().astype(str).unique().tolist() +
-        ldf['User'].dropna().astype(str).unique().tolist() +
-        sdf['User'].dropna().astype(str).unique().tolist()
-    ))
-    master_leads  = sorted(set(
-        vdf['Lead Type'].dropna().astype(str).unique().tolist() if 'Lead Type' in vdf.columns else [] +
-        ldf['Lead Type'].dropna().astype(str).unique().tolist() if 'Lead Type' in ldf.columns else [] +
-        sdf['Lead Type'].dropna().astype(str).unique().tolist() if 'Lead Type' in sdf.columns else []
-    ))
-    master_states = sorted(set(
-        vdf['State'].dropna().astype(str).unique().tolist() if 'State' in vdf.columns else [] +
-        ldf['State'].dropna().astype(str).unique().tolist() if 'State' in ldf.columns else [] +
-        sdf['State'].dropna().astype(str).unique().tolist() if 'State' in sdf.columns else []
-    ))
+    # Master filter lists — union of all sheets
+    def u(col, *dfs):
+        vals = []
+        for d in dfs:
+            if col in d.columns: vals += d[col].dropna().astype(str).unique().tolist()
+        return sorted(set(vals))
+
+    master_users  = u('User',      vdf, ldf, sdf)
+    master_leads  = u('Lead Type', vdf, ldf, sdf)
+    master_states = u('State',     vdf, ldf, sdf)
 
     return vdf, ldf, sdf, combined, master_users, master_leads, master_states
 
 try:
     vdf, ldf, sdf, combined, master_users, master_leads, master_states = load_all()
 
-    # ── Session state for filters ─────────────────────────────────────────────
-    for k, v in [('su', set(master_users)), ('sl', set(master_leads)), ('ss', set(master_states))]:
+    # ── Session state ─────────────────────────────────────────────────────────
+    for k,v in [('su',set(master_users)),('sl',set(master_leads)),('ss',set(master_states))]:
         if k not in st.session_state: st.session_state[k] = v
 
-    # Date range from combined
     min_d = combined['Date'].dropna().min().date()
     max_d = combined['Date'].dropna().max().date()
     if 'fstart' not in st.session_state: st.session_state['fstart'] = min_d
@@ -178,7 +154,7 @@ try:
 
     # ── FILTER PANEL ──────────────────────────────────────────────────────────
     st.markdown('<div class="filter-section">', unsafe_allow_html=True)
-    fc0, fc1, fc2, fc3, fc4 = st.columns([1.4, 2.5, 2.8, 3.2, 0.7])
+    fc0,fc1,fc2,fc3,fc4 = st.columns([1.4,2.5,2.8,3.2,0.7])
 
     with fc0:
         st.markdown('<div class="filter-label">📅 Date Range</div>', unsafe_allow_html=True)
@@ -187,16 +163,16 @@ try:
         st.session_state['fend']   = st.date_input("To",   value=st.session_state['fend'],
             min_value=min_d, max_value=max_d, label_visibility="collapsed", key="ed")
 
-    def pill_group(sk, all_items, label, ncols, col_ctx):
-        with col_ctx:
+    def pill_group(sk, items, label, ncols, ctx):
+        with ctx:
             st.markdown(f'<div class="filter-label">{label}</div>', unsafe_allow_html=True)
-            all_sel = st.session_state[sk] == set(all_items)
+            all_sel = st.session_state[sk] == set(items)
             if st.button("✓ Select All" if all_sel else "Select All", key=f"{sk}_all"):
-                st.session_state[sk] = set(all_items) if not all_sel else set()
+                st.session_state[sk] = set(items) if not all_sel else set()
                 st.rerun()
-            for row in [all_items[i:i+ncols] for i in range(0, len(all_items), ncols)]:
+            for row in [items[i:i+ncols] for i in range(0,len(items),ncols)]:
                 cs = st.columns(len(row))
-                for ci, item in enumerate(row):
+                for ci,item in enumerate(row):
                     active = item in st.session_state[sk]
                     if cs[ci].button(f"✓ {item}" if active else item, key=f"{sk}_{item}"):
                         if active: st.session_state[sk].discard(item)
@@ -217,8 +193,7 @@ try:
 
     st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Filter function — mirrors Power BI slicer behaviour ──────────────────
-    # Power BI Master tables connect via relationships: filter propagates to all fact tables
+    # ── Apply Filters — matches Power BI slicer propagation ──────────────────
     def filt(df):
         d = df.copy()
         if 'Date' in d.columns:
@@ -232,20 +207,27 @@ try:
             d = d[d['State'].astype(str).isin(st.session_state['ss'])]
         return d
 
-    vF   = filt(vdf)      # filtered visitors
-    lF   = filt(ldf)      # filtered leads
-    sF   = filt(sdf)      # filtered sales
-    actF = filt(combined) # filtered combined (for charts that use combined)
+    vF   = filt(vdf)
+    lF   = filt(ldf)
+    sF   = filt(sdf)
+    actF = filt(combined)
 
-    # ── KPIs — exact match to Power BI measures ───────────────────────────────
-    total_visitors = len(vF)                          # COUNTROWS(Visitor_Related_data)
-    total_leads    = len(lF)                          # COUNTROWS(Lead_Realated_Data)
-    total_sales    = len(sF)                          # COUNTROWS(Sales_Related_Data)
+    # ── KPIs — exact Power BI logic ───────────────────────────────────────────
+    # Total Visitors  = COUNTROWS(Visitor_Related_data)          → 471
+    # Total Lead      = COUNTROWS(Lead_Realated_Data)            → 155
+    # Total Sales     = COUNTROWS(Sales_Related_Data)            → 23
+    # Total Quotation = Stage IN ("Quotation Send","Hot Lead")   → 46+20 = 66
+    # Total Revenue   = SUM(Sales[PO Amount])                    → 82,560,765
+
+    total_visitors = len(vF)
+    total_leads    = len(lF)
+    total_sales    = len(sF)
     total_rev      = float(sF['Amount'].sum()) if 'Amount' in sF.columns else 0.0
 
-    # Total Quotation = Lead rows where Stage = "Quotation Send"
+    # ⭐ KEY FIX: Quotation Send = "Quotation Send" + "Hot Lead" (matches Power BI filter)
     if 'Stage' in lF.columns:
-        total_quot = len(lF[lF['Stage'].astype(str).str.contains('quot', na=False, case=False)])
+        quot_stages = lF['Stage'].astype(str).str.strip()
+        total_quot  = len(lF[quot_stages.isin(['Quotation Send','Hot Lead'])])
     else:
         total_quot = 0
 
@@ -253,7 +235,7 @@ try:
         try:
             v = float(v)
             if v >= 1_00_00_000: return f"₹{v/1_00_00_000:.2f} Cr"
-            elif v >= 1_00_000:  return f"₹{v/1_00_000:.1f} L"
+            elif v >= 1_00_000:  return f"₹{v/1_00_000:.2f} L"
             else:                return f"₹{v:,.0f}"
         except: return "—"
 
@@ -269,7 +251,7 @@ try:
 
     st.markdown("---")
 
-    # ── Charts — matching Power BI exactly ───────────────────────────────────
+    # ── Charts ────────────────────────────────────────────────────────────────
     GOLD = ["#8B6914","#c8a84b","#e8c870","#5a3d10","#f0d890","#3a2800","#d4b060","#a07828","#604008","#e0b840"]
 
     def bl(fig, h=260):
@@ -291,19 +273,17 @@ try:
 
     ch1,ch2,ch3,ch4,ch5 = st.columns(5)
 
-    # 1. Count of Source by Source — Lead sheet, Source col
     with ch1:
         st.markdown('<div class="chart-box"><div class="chart-title">Count of Source by Source</div>', unsafe_allow_html=True)
         if 'Source' in lF.columns and not lF.empty:
             d = lF['Source'].value_counts().reset_index(); d.columns=['Source','Count']
             fig = px.bar(d, x='Source', y='Count', color='Source', color_discrete_sequence=GOLD)
-            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_tickangle=-35, xaxis_title="", yaxis_title="Count")
+            fig = bl(fig); fig.update_layout(showlegend=False, xaxis_tickangle=-35, yaxis_title="Count")
             st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Source column not in Lead sheet")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 2. Competitors (Visit) — Visitor sheet, Competitors col (was "Meyer Existing Customer")
     with ch2:
         st.markdown('<div class="chart-box"><div class="chart-title">Competitors (Visit)</div>', unsafe_allow_html=True)
         if 'Competitors' in vF.columns and not vF.empty:
@@ -312,10 +292,9 @@ try:
             fig = bl(fig); fig.update_traces(textposition='inside', textinfo='percent+label')
             st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("Competitors column not found")
+            st.info("Competitors column not found in Visitor sheet")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 3. User Sales — Sales sheet, count per User
     with ch3:
         st.markdown('<div class="chart-box"><div class="chart-title">User Sales</div>', unsafe_allow_html=True)
         if 'User' in sF.columns and not sF.empty:
@@ -325,7 +304,6 @@ try:
             st.info("No sales data")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 4. Lead Type Sales — Sales sheet, count per Lead Type
     with ch4:
         st.markdown('<div class="chart-box"><div class="chart-title">Lead Type Sales</div>', unsafe_allow_html=True)
         if 'Lead Type' in sF.columns and not sF.empty:
@@ -335,7 +313,6 @@ try:
             st.info("No Lead Type in sales")
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # 5. State Sales — Sales sheet, count per State
     with ch5:
         st.markdown('<div class="chart-box"><div class="chart-title">State Sales</div>', unsafe_allow_html=True)
         if 'State' in sF.columns and not sF.empty:
@@ -354,7 +331,6 @@ try:
 
     with t1:
         st.markdown('<div class="sec-hdr">📋 Lead &amp; Visitor Log</div>', unsafe_allow_html=True)
-        # Combined_Activity_Log view — matches Power BI bottom left table
         lv_cols = sc(actF, ['Date','Customer Name','Contact Person','User',
                             'State','City','Lead Type','Source','Stage','Remark','Competitors','_src'])
         lv = actF[lv_cols].reset_index(drop=True)
@@ -369,18 +345,17 @@ try:
         st.dataframe(s_tbl, use_container_width=True, height=360)
 
     # ── Debug ─────────────────────────────────────────────────────────────────
-    with st.expander("🔧 Debug — verify counts match Power BI"):
-        st.write(f"**Visitor rows (unfiltered):** {len(vdf)}  ← should be 471")
-        st.write(f"**Lead rows (unfiltered):** {len(ldf)}  ← should be 155")
-        st.write(f"**Sales rows (unfiltered):** {len(sdf)}  ← should be 23")
-        st.write(f"**Quotation rows (unfiltered):** {len(ldf[ldf['Stage'].astype(str).str.contains('quot', na=False, case=False)]) if 'Stage' in ldf.columns else 'Stage col missing'}  ← should be 66")
-        st.write("**Visitor cols:**", vdf.columns.tolist())
-        st.write("**Lead cols:**",    ldf.columns.tolist())
-        st.write("**Sales cols:**",   sdf.columns.tolist())
+    with st.expander("🔧 Debug — verify counts vs Power BI"):
+        st.markdown("**Expected from Power BI:** Visitors=471, Leads=155, Sales=23, Quotation=66, Revenue=82,560,765")
+        st.write(f"Visitor rows: **{len(vdf)}** (filtered: {len(vF)})")
+        st.write(f"Lead rows: **{len(ldf)}** (filtered: {len(lF)})")
+        st.write(f"Sales rows: **{len(sdf)}** (filtered: {len(sF)})")
         if 'Stage' in ldf.columns:
-            st.write("**Stage unique values:**", ldf['Stage'].dropna().unique().tolist())
-        if 'Amount' in sdf.columns:
-            st.write("**Revenue (unfiltered):**", sdf['Amount'].sum())
+            stage_counts = ldf['Stage'].value_counts()
+            st.write("**Stage breakdown:**"); st.write(stage_counts)
+            quot_hot = len(ldf[ldf['Stage'].astype(str).str.strip().isin(['Quotation Send','Hot Lead'])])
+            st.write(f"Quotation Send + Hot Lead = **{quot_hot}** (should be 66)")
+        st.write(f"Revenue (unfiltered): ₹{sdf['Amount'].sum():,.0f}" if 'Amount' in sdf.columns else "Amount col missing")
 
     st.markdown("""<div style="text-align:center;color:#8a7030;font-size:0.72rem;margin-top:16px;font-style:italic;">
       NICPL · Auto-refreshes every 60 s</div>""", unsafe_allow_html=True)
